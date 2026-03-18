@@ -25,3 +25,34 @@ replay_pid*
 
 # Kotlin Gradle plugin data, see https://kotlinlang.org/docs/whatsnew20.html#new-directory-for-kotlin-data-in-gradle-projects
 .kotlin/
+
+# Android build artifacts
+build/
+*/build/
+
+# Android Studio project files
+*.iml
+.idea/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries
+.idea/libraries
+.idea/caches
+
+# Android Studio local properties
+local.properties
+
+# Gradle cache and wrapper (keep wrapper jar in VCS)
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ProGuard
+proguard/
+
+# DS_Store (macOS)
+.DS_Store
+
+# NDK
+.cxx/
