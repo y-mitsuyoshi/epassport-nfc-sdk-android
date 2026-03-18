@@ -8,7 +8,7 @@ import java.util.Date
  * @property surname Holder's surname as printed on the MRZ.
  * @property givenNames Holder's given names as printed on the MRZ.
  * @property documentNumber Passport document number (9 characters).
- * @property nationality Three-letter nationality code (ICAO 3166-1 alpha-3).
+ * @property nationality Three-letter nationality code (ISO 3166-1 alpha-3).
  * @property dateOfBirth Holder's date of birth.
  * @property gender Holder's gender ('M', 'F', or '<' for unspecified).
  * @property dateOfExpiry Passport expiry date.
