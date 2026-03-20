@@ -1,107 +1,154 @@
-# epassport-nfc-sdk-android
-Android 向け Kotlin ライブラリ / SDK — NFC を使って IC 旅券（ePassport）からデータを読み取るための実装です。
+# ePassport NFC SDK for Android
 
-本 SDK は ICAO Doc 9303 の仕様に基づいた基本的なパスポート読み取りフロー（BAC による認証、Secure Messaging、DG1/DG2 の読み取りとパース）を提供します。
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-blue.svg)](https://kotlinlang.org)
+[![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
+[![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)](LICENSE)
 
-**主な特徴**
-- `EPassportReader` フェサードを通じたシンプルな高水準 API
-- BAC（Basic Access Control）を用いた認証と Secure Messaging の実装
-- DG1（MRZ）/DG2（顔画像） の読み取りおよび BER-TLV パーサ
-- Kotlin + Coroutines ベース、ユニットテストあり
-- 3DES/CMAC 等の暗号処理は BouncyCastle 等のプロバイダに依存します
+Android 端末の NFC 機能を利用して、IC 旅券（ePassport）のデータを読み取るための Kotlin 製 SDK です。
+ICAO Doc 9303 に基づく BAC（Basic Access Control）認証と Secure Messaging をサポートしています。
 
-**重要ファイル**
-- SDK モジュール設定: [sdk/build.gradle.kts](sdk/build.gradle.kts#L1-L120)
-- 高レベル API: [sdk/src/main/kotlin/com/example/epassport/api/EPassportReader.kt](sdk/src/main/kotlin/com/example/epassport/api/EPassportReader.kt#L1-L120)
-- 読取ユースケース: [sdk/src/main/kotlin/com/example/epassport/usecase/ReadPassportUseCase.kt](sdk/src/main/kotlin/com/example/epassport/usecase/ReadPassportUseCase.kt#L1-L200)
-- BAC 認証: [sdk/src/main/kotlin/com/example/epassport/data/auth/BacAuthenticator.kt](sdk/src/main/kotlin/com/example/epassport/data/auth/BacAuthenticator.kt#L1-L200)
-- Secure Messaging: [sdk/src/main/kotlin/com/example/epassport/data/auth/SecureMessaging.kt](sdk/src/main/kotlin/com/example/epassport/data/auth/SecureMessaging.kt#L1-L400)
-- TLV / DG パーサ: [sdk/src/main/kotlin/com/example/epassport/data/parser/TlvParser.kt](sdk/src/main/kotlin/com/example/epassport/data/parser/TlvParser.kt#L1-L240)
-- MRZ ユーティリティ: [sdk/src/main/kotlin/com/example/epassport/domain/model/MrzData.kt](sdk/src/main/kotlin/com/example/epassport/domain/model/MrzData.kt#L1-L200)
-- サンプル（MRZ → K_seed）: [TestSha.kt](TestSha.kt#L1-L200)
+## 🚀 主な機能
 
-**クイックスタート**
+- **シンプルな Facade API**: `EPassportReader` を通じた直感的な操作
+- **認証と通信保護**: BAC 認証および Secure Messaging（3DES/CMAC）の実装
+- **データ抽出**:
+  - **DG1**: MRZ（Machine Readable Zone）情報のパース（姓名、生年月日、有効期限など）
+  - **DG2**: 顔写真（JPEG/JPEG2000）のバイナリ抽出
+- **進行状況通知**: 認証から読み取り完了までの詳細なステータス取得
+- **セキュリティ**: 機密データのメモリクリア処理を内蔵
 
-1. ビルド
+---
 
-```bash
-./gradlew :sdk:assembleRelease
+## 📦 導入方法
+
+### 1. 依存関係の追加
+
+プロジェクトの `build.gradle.kts` に SDK モジュールを追加します。
+
+```kotlin
+dependencies {
+    implementation(project(":sdk"))
+    // または AAR を使用する場合
+    // implementation(files("libs/epassport-sdk-release.aar"))
+}
 ```
 
-AAR は `sdk/build/outputs/aar/` に出力されます。プロジェクトにモジュールとして組み込む場合は `implementation project(":sdk")` を利用してください。
+### 2. AndroidManifest.xml の設定
 
-2. テスト
+NFC を使用するため、以下の権限と機能を宣言する必要があります。
 
-```bash
-./gradlew :sdk:test
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="true" />
+
+    <application>
+        <!-- 必要に応じて NFC の Intent Filter を Activity に追加 -->
+    </application>
+</manifest>
 ```
 
-ユニットテストは `sdk/src/test/kotlin` 配下にあります（例: `ReadPassportUseCaseTest`, `BacAuthenticatorTest`, `TlvParserTest`）。
+---
 
-**簡単な使用例（Android, Kotlin）**
+## 💡 使用例
 
-以下は `Tag`（Android NFC の Tag オブジェクト）と MRZ 情報を与えてパスポートを読み取る例です。
+`EPassportReader` を使用して、NFC タグと MRZ 情報からパスポートデータを読み取ります。
 
 ```kotlin
 import androidx.lifecycle.lifecycleScope
 import com.example.epassport.api.EPassportReader
+import com.example.epassport.api.ReadResult
 import com.example.epassport.domain.model.MrzData
+import kotlinx.coroutines.launch
 
-// Activity / Fragment 内で
+// 1. OCR 等で取得した MRZ 情報を準備
+val mrz = MrzData(
+    documentNumber = "L898902C<", 
+    dateOfBirth = "690806", 
+    dateOfExpiry = "940623"
+)
+
+// 2. NFC Tag 検知時に読み取り開始
 lifecycleScope.launch {
-	val mrz = MrzData(documentNumber = "L898902C<", dateOfBirth = "690806", dateOfExpiry = "940623")
+    val result = EPassportReader.read(tag = nfcTag, mrzData = mrz) { progress ->
+        when (progress) {
+            ReadProgress.CONNECTING -> println("接続中...")
+            ReadProgress.AUTHENTICATING -> println("認証中 (BAC)...")
+            ReadProgress.READING_DG1 -> println("DG1 (MRZ) 読み取り中...")
+            ReadProgress.READING_DG2 -> println("DG2 (顔写真) 読み取り中...")
+            ReadProgress.SUCCESS -> println("読み取り完了")
+            ReadProgress.ERROR -> println("エラー発生")
+        }
+    }
 
-	val result = EPassportReader.read(tag = tag, mrzData = mrz) { progress ->
-		// 進捗通知: CONNECTING, AUTHENTICATING, READING_DG1, READING_DG2, ...
-	}
-
-	when (result) {
-		is com.example.epassport.api.ReadResult.Success -> {
-			val passportData = result.data
-			// passportData.dg1 / passportData.dg2 を利用
-		}
-		is com.example.epassport.api.ReadResult.Error -> {
-			// エラー処理
-		}
-	}
+    when (result) {
+        is ReadResult.Success -> {
+            val data = result.data
+            // DG1: 氏名や生年月日へのアクセス
+            println("Name: ${data.dg1.primaryIdentifier} ${data.dg1.secondaryIdentifier}")
+            
+            // DG2: 顔写真のバイナリ取得
+            data.dg2?.let { face ->
+                val bitmap = BitmapFactory.decodeByteArray(face.faceImageBytes, 0, face.faceImageBytes.size)
+                // 利用後はメモリからクリアすることを推奨
+                face.clear()
+            }
+        }
+        is ReadResult.Error -> {
+            println("Error: ${result.exception.message}")
+        }
+    }
 }
 ```
 
-`EPassportReader` は内部で `IsoDep` を `IsoDepTransceiver` にラップし、`BacAuthenticator` → `IcaoDataGroupReader` の組合せで DG1/DG2 を取得します。
+---
 
-**アーキテクチャ概略**
+## 🏗 アーキテクチャ
 
-- モジュール構成: 単一の `sdk` モジュール（Android ライブラリ）
-- パッケージ構造 (主要部分)
-  - `com.example.epassport.api` — 公開 API (`EPassportReader`, `ReadResult`)
-  - `com.example.epassport.usecase` — オーケストレーション (`ReadPassportUseCase`, 進行状況列挙)
-  - `com.example.epassport.data` — データ層
-	- `nfc` — `IsoDepTransceiver`, `ApduCommand`（APDU の組立）
-	- `auth` — `BacAuthenticator`, `SecureMessaging`（認証と保護通信）
-	- `reader` — `IcaoDataGroupReader`（DG 読取ロジック）
-	- `parser` — `TlvParser`, `Dg1Parser`, `Dg2Parser`
-  - `com.example.epassport.domain` — ドメインモデル、ポート、例外 (`MrzData`, `PassportData`, `BacKey`, `NfcTransceiver` など)
+Clean Architecture に基づいた堅牢な設計を採用しています。
 
-フロー（概略）:
-1. NFC Tag から `IsoDep` を取得
-2. `IsoDepTransceiver.selectApp()` で eMRTD アプレットを選択
-3. MRZ から BAC 鍵を導出し、`BacAuthenticator.authenticate` を実行
-4. `SecureMessaging` による APDU の暗号化/検証を行いつつ DG1/DG2 を読み出す
-5. TLV をパースして MRZ 情報や顔画像を抽出
-
-**セキュリティ上の注意**
-- MRZ 情報や生成した鍵は機密データです。メモリ上の保管は最小限にし、不要になったら速やかに破棄してください（SDK 内でも配慮しています）。
-- ICAO の仕様に基づき 3DES/CMAC を使用する箇所があります。プロダクション用途では使用する暗号プロバイダやアルゴリズムの適合性を確認してください。
-
-**開発・貢献**
-- バグ修正や機能追加は Fork → ブランチ → Pull Request をお願いします。
-- 変更前に `./gradlew :sdk:test` で既存テストが通ることを確認してください。
-
-**参考 / 参照ファイル**
-- サンプル MRZ → K_seed: [TestSha.kt](TestSha.kt#L1-L200)
-- API 実装の入り口: [sdk/src/main/kotlin/com/example/epassport/api/EPassportReader.kt](sdk/src/main/kotlin/com/example/epassport/api/EPassportReader.kt#L1-L120)
+```text
+[ API Layer ]         - EPassportReader (Facade)
+      |
+[ UseCase Layer ]     - ReadPassportUseCase (Orchestration)
+      |
+[ Domain Layer ]      - PassportData, MrzData (Models)
+      |               - NfcTransceiver, PassportAuthenticator (Interfaces)
+      |
+[ Data Layer ]        - BacAuthenticator (BAC Auth logic)
+                      - SecureMessaging (Encryption/MAC)
+                      - IcaoDataGroupReader (APDU communication)
+                      - TlvParser (BER-TLV decoding)
+```
 
 ---
+
+## 🔒 セキュリティ
+
+- **鍵の破棄**: BAC 認証で使用する `BacKey` は、認証成功後すぐにメモリから消去されます。
+- **画像データの保護**: `Dg2Data` は RAW バイトを保持しますが、`clear()` メソッドを呼び出すことで明示的にメモリ上のデータをゼロクリアできます。
+
+---
+
+## 🛠 開発とテスト
+
+### ビルド
+```bash
+./gradlew :sdk:assembleRelease
+```
+
+### テストの実行
+```bash
+./gradlew :sdk:test
+```
+ユニットテストは `sdk/src/test/kotlin` にあり、認証フローや TLV パースのロジックをカバーしています。
+
+---
+
+## 📝 ライセンス
+
+このプロジェクトは MIT ライセンスの下で公開されています。
+詳細は [LICENSE](LICENSE) ファイルを参照してください。
 
 
 
