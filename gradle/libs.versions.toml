@@ -6,6 +6,7 @@ coroutines = "1.7.3"
 bouncycastle = "1.78.1"
 junit = "4.13.2"
 mockk = "1.13.10"
+jacoco = "0.8.10"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -17,3 +18,4 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+jacoco = { id = "org.gradle.jacoco", version.ref = "jacoco" }

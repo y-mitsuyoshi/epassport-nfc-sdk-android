@@ -1,8 +1,8 @@
 package com.example.epassport.data.auth
 
-import com.example.epassport.domain.exception.AuthenticationException
 import com.example.epassport.domain.model.BacKey
 import com.example.epassport.domain.port.NfcTransceiver
+import com.example.epassport.util.CryptoUtils
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
@@ -10,6 +10,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import java.security.Security
+import javax.crypto.Cipher
 
 class BacAuthenticatorTest {
 
@@ -26,45 +27,60 @@ class BacAuthenticatorTest {
     }
 
     @Test
-    fun authenticate_successful() { runBlocking {
-        // ICAO Appendix D.3 BAC Mutual Authentication Test Vectors
-        // We will just verify the mock returns a valid struct and the authenticator succeeds.
-        // We cannot easily predict the random generated RND.IFD/K.IFD by the authenticator,
-        // so a strict Appendix D match is hard unless we inject a seed (which is overkill for this test).
-        // Let's configure a mock transceiver that just responds with correct MAC for WHATEVER it receives.
-        
-        // Mock GET CHALLENGE response
-        // Mock RND.IC (8 bytes) + SW (2 bytes)
-        val getChallengeResponse = ByteArray(10)
-        getChallengeResponse[8] = 0x90.toByte()
-        getChallengeResponse[9] = 0x00.toByte()
+    fun authenticate_successful_icaoAppendixD() { runBlocking {
+        // Based on ICAO 9303 Part 11, Appendix D.3 Test Vectors
+        val kEnc = byteArrayOf(
+            0xAB.toByte(), 0x94.toByte(), 0xFD.toByte(), 0xEC.toByte(),
+            0xF2.toByte(), 0x67.toByte(), 0x4F.toByte(), 0xDF.toByte(),
+            0xB9.toByte(), 0xB3.toByte(), 0x91.toByte(), 0xF8.toByte(),
+            0x5D.toByte(), 0x7F.toByte(), 0x76.toByte(), 0xF2.toByte()
+        )
+        val kMac = byteArrayOf(
+            0x79.toByte(), 0x62.toByte(), 0xD9.toByte(), 0xEC.toByte(),
+            0xE0.toByte(), 0x3D.toByte(), 0x1A.toByte(), 0xCD.toByte(),
+            0x4C.toByte(), 0x76.toByte(), 0x08.toByte(), 0x9D.toByte(),
+            0xCE.toByte(), 0x13.toByte(), 0x15.toByte(), 0x43.toByte()
+        )
+        val bacKey = BacKey(kEnc, kMac)
+
+        val rndIc = byteArrayOf(
+            0x46.toByte(), 0x0F.toByte(), 0x88.toByte(), 0x39.toByte(),
+            0x8C.toByte(), 0x12.toByte(), 0xBF.toByte(), 0x90.toByte()
+        )
+
+        // Mock GET CHALLENGE response (returns RND.IC)
+        val getChallengeResponse = rndIc + byteArrayOf(0x90.toByte(), 0x00.toByte())
         coEvery { transceiver.transceive(match { it[1] == 0x84.toByte() }) } returns getChallengeResponse
 
-        // Mock EXTERNAL AUTHENTICATE response
+        // We can't inject the authenticator's RND.IFD, so we must grab it from the command it tries to send.
         coEvery { transceiver.transceive(match { it[1] == 0x82.toByte() }) } answers {
-            val cmd = arg<ByteArray>(0)
-            val authData = cmd.copyOfRange(5, 45) // eS(32) + MAC_S(8)
-            val eS = authData.copyOfRange(0, 32)
+            val command = arg<ByteArray>(0)
+            val cmdData = command.copyOfRange(5, command.size) // data part
+            val eIfd = cmdData.copyOfRange(0, 32)
             
-            // To simulate success, we decrypt eS to get RND.IC and RND.IFD
-            // K.Enc and K.Mac are needed but we just mock the exact MAC validation for this generic test.
-            // A perfect test would reimplement the crypto just for the mock, but here we can just 
-            // construct a valid response.
-            // R = rnd_ic || rnd_ifd || k_ic
-            // Actually, without modifying the source to allow injecting RND, we can't easily fake a valid Crypto response here.
-            // Let's at least test that if we force an exception (Invalid MAC), it throws AuthenticationException.
+            // Decrypt eIFD to extract RND.IFD and K.IFD
+            val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, CryptoUtils.get3desKey(kEnc), CryptoUtils.getIv(kEnc, kMac))
+            val decryptedData = cipher.doFinal(eIfd)
             
-            val badResponse = ByteArray(42) // all 0s
-            badResponse
+            val rndIfd = decryptedData.copyOfRange(0, 8)
+            val kIfd = decryptedData.copyOfRange(8, 24)
+
+            // Now, construct the PICC's response (R_ifd)
+            val rPicc = rndIfd + rndIc + kIfd
+            
+            val cipherEnc = Cipher.getInstance("DESede/CBC/NoPadding")
+            cipherEnc.init(Cipher.ENCRYPT_MODE, CryptoUtils.get3desKey(kEnc), CryptoUtils.getIv(kEnc, kMac))
+            val ePicc = cipherEnc.doFinal(rPicc)
+            
+            val mPicc = CryptoUtils.calculateMac(kMac, ePicc)
+            
+            val response = ePicc + mPicc + 0x90.toByte() + 0x00.toByte()
+            response
         }
 
-        val bacKey = BacKey(ByteArray(24), ByteArray(24))
-        
-        try {
-            authenticator.authenticate(transceiver, bacKey)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // Expected since MAC validation will fail on all-zeros mock response
-        }
+        val secureMessaging = authenticator.authenticate(transceiver, bacKey)
+        assertNotNull(secureMessaging)
     } }
 }
+
