@@ -58,21 +58,24 @@ class CryptoUtilsTest {
             0xCE.toByte(), 0x13.toByte(), 0x15.toByte(), 0x43.toByte()
         )
 
+        // ICAO 9303 Part 11 D.3 eIFD
         val data = byteArrayOf(
             0x72.toByte(), 0xC2.toByte(), 0x3B.toByte(), 0x38.toByte(),
             0x41.toByte(), 0x61.toByte(), 0x19.toByte(), 0x49.toByte(),
-            0x78.toByte(), 0x14.toByte(), 0x46.toByte(), 0x0F.toByte(),
-            0x88.toByte(), 0x39.toByte(), 0x8C.toByte(), 0x12.toByte(),
-            0x46.toByte(), 0x0F.toByte(), 0x88.toByte(), 0x39.toByte(),
-            0x8C.toByte(), 0x12.toByte(), 0xBF.toByte(), 0x90.toByte(),
-            0x7C.toByte(), 0x8D.toByte(), 0x94.toByte(), 0xCE.toByte(),
-            0x22.toByte(), 0x83.toByte(), 0x1B.toByte(), 0x18.toByte()
+            0x78.toByte(), 0x51.toByte(), 0xEE.toByte(), 0xB2.toByte(),
+            0x0A.toByte(), 0x6A.toByte(), 0xBC.toByte(), 0xD0.toByte(),
+            0xB5.toByte(), 0x32.toByte(), 0x30.toByte(), 0x7B.toByte(),
+            0xCA.toByte(), 0x64.toByte(), 0xD7.toByte(), 0xBA.toByte(),
+            0x5F.toByte(), 0xA0.toByte(), 0x58.toByte(), 0x4E.toByte(),
+            0x8A.toByte(), 0xB3.toByte(), 0xBA.toByte(), 0xDE.toByte()
         )
 
         val mac = CryptoUtils.calculateMac(kMac, CryptoUtils.pad(data))
+        
+        // ICAO 9303 Part 11 D.3 M_IFD
         val expectedMac = byteArrayOf(
-            0x5F.toByte(), 0x16.toByte(), 0x7B.toByte(), 0x59.toByte(),
-            0x2A.toByte(), 0x0E.toByte(), 0x0D.toByte(), 0x51.toByte()
+            0x5F.toByte(), 0x14.toByte(), 0x48.toByte(), 0xEE.toByte(),
+            0xA8.toByte(), 0xAD.toByte(), 0x90.toByte(), 0xA7.toByte()
         )
 
         assertArrayEquals(expectedMac, mac)
