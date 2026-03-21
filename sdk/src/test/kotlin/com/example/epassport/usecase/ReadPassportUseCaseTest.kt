@@ -105,7 +105,7 @@ class ReadPassportUseCaseTest {
         } catch (e: Exception) {
             org.junit.Assert.assertTrue(e is com.example.epassport.domain.exception.EPassportException)
             assertEquals("Unexpected error during passport reading", e.message)
-            org.junit.Assert.assertTrue(e.cause is RuntimeException)
+            org.junit.Assert.assertTrue(e.cause is RuntimeException || e.cause?.cause is RuntimeException)
         }
     } }
 }

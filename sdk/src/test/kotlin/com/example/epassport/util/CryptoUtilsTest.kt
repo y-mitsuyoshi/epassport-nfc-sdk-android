@@ -69,7 +69,7 @@ class CryptoUtilsTest {
             0x22.toByte(), 0x83.toByte(), 0x1B.toByte(), 0x18.toByte()
         )
 
-        val mac = CryptoUtils.calculateMac(kMac, data)
+        val mac = CryptoUtils.calculateMac(kMac, CryptoUtils.pad(data))
         val expectedMac = byteArrayOf(
             0x5F.toByte(), 0x16.toByte(), 0x7B.toByte(), 0x59.toByte(),
             0x2A.toByte(), 0x0E.toByte(), 0x0D.toByte(), 0x51.toByte()

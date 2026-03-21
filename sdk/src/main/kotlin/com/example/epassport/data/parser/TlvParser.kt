@@ -65,7 +65,7 @@ object TlvParser {
         var idx = offset
         val firstByte = data[idx].toInt() and 0xFF
         var bytesRead = 1
-        var length = 0
+        var length: Int
         
         if (firstByte <= 0x7F) {
             length = firstByte

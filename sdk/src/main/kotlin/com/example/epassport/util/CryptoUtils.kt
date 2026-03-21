@@ -37,7 +37,7 @@ object CryptoUtils {
     /** ISO9797-1 Algorithm 3 MAC ( Retail MAC ) の計算 */
     fun calculateMac(key: ByteArray, data: ByteArray): ByteArray {
         val engine = DESEngine()
-        val mac = ISO9797Alg3Mac(engine, 64, ISO7816d4Padding())
+        val mac = ISO9797Alg3Mac(engine, 64)
         val keyParam = KeyParameter(key)
         mac.init(keyParam)
         mac.update(data, 0, data.size)

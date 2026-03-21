@@ -35,10 +35,6 @@ class SecureMessaging(
         val ins = command[1].toInt() and 0xFF
         val p1 = command[2].toInt() and 0xFF
         val p2 = command[3].toInt() and 0xFF
-
-        val isReadBinary = ins == 0xB0
-        val isSelectFile = ins == 0xA4
-
         // Parse Le/Lc
         var lc = 0
         var le = -1

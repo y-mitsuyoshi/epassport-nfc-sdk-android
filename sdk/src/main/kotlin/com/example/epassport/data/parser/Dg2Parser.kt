@@ -19,9 +19,6 @@ object Dg2Parser {
             val bitNode = bitNodes.find { it.tag == 0x7F61 }
                 ?: throw InvalidDataException("BIT (0x7F61) tag not found")
 
-            // Biometric Data Block (BDB): various inner tags, finding Biometric Data Block tag (0x5F2E) or 0x7F60
-            val bdbTagNodes = TlvParser.parse(bitNode.value)
-            
             // Note: The structure inside 0x7F61 can be generic or have 0x02, 0x7F60
             // Actually, we can just do a brute force search for JPEG / JP2 headers in the payload
             // as ICAO facial structures can vary.
@@ -42,7 +39,7 @@ object Dg2Parser {
      */
     private fun extractImage(data: ByteArray): Pair<ByteArray, String>? {
         // Search JPEG
-        for (i in 0 until data.size - 2) {
+        for (i in 0..data.size - 3) {
             if (data[i] == 0xFF.toByte() && data[i + 1] == 0xD8.toByte() && data[i + 2] == 0xFF.toByte()) {
                 val imageBytes = ByteArray(data.size - i)
                 System.arraycopy(data, i, imageBytes, 0, imageBytes.size)
@@ -52,7 +49,7 @@ object Dg2Parser {
         
         // Search JP2000
         val jp2Header = byteArrayOf(0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20)
-        for (i in 0 until data.size - 8) {
+        for (i in 0..data.size - 8) {
             var match = true
             for (j in 0 until 8) {
                 if (data[i + j] != jp2Header[j]) {

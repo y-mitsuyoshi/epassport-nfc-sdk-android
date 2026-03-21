@@ -73,10 +73,10 @@ class BacAuthenticatorTest {
             val rndIfdDecrypted = sDecrypted.copyOfRange(8, 16)
             val kIfd = sDecrypted.copyOfRange(16, 32)
 
-            // Build R = RND.IFD || RND.IC || K.IFD (swap order for PICC response)
+            // Build R = RND.IC || RND.IFD || K.IC (using kIfd as mock K.IC)
             val rPicc = ByteArray(32)
-            System.arraycopy(rndIfdDecrypted, 0, rPicc, 0, 8)
-            System.arraycopy(rndIc, 0, rPicc, 8, 8)
+            System.arraycopy(rndIc, 0, rPicc, 0, 8)
+            System.arraycopy(rndIfdDecrypted, 0, rPicc, 8, 8)
             System.arraycopy(kIfd, 0, rPicc, 16, 16)
 
             val cipherEnc = Cipher.getInstance("DESede/CBC/NoPadding", "BC")
