@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.example.epassport.usecase.ReadPassportUseCaseTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-03-18T11:28:09" hostname="yuma" time="0.322">
-  <properties/>
-  <testcase name="execute_success_returnsPassportData" classname="com.example.epassport.usecase.ReadPassportUseCaseTest" time="0.292"/>
-  <testcase name="execute_authFailure_throwsException" classname="com.example.epassport.usecase.ReadPassportUseCaseTest" time="0.03"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

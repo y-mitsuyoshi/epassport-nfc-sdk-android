@@ -67,43 +67,44 @@ object Dg1Parser {
     }
 
     private fun parseTd1(mrz: String): Dg1Data {
-        // Simplified fallback for TD1
-        val documentCode = mrz.substring(0, 2)
-        val documentNumber = mrz.substring(5, 14)
+        val namesField = mrz.substring(60, 90)
+        val nameParts = namesField.split("<<")
+        val primaryIdentifier = nameParts[0].replace("<", " ").trim()
+        val secondaryIdentifier = if (nameParts.size > 1) nameParts[1].replace("<", " ").trim() else ""
+
         return Dg1Data(
-            documentCode = documentCode.replace("<", ""),
+            documentCode = mrz.substring(0, 2).replace("<", ""),
             issuingState = mrz.substring(2, 5).replace("<", ""),
-            documentNumber = documentNumber.replace("<", ""),
+            documentNumber = mrz.substring(5, 14).replace("<", ""),
             optionalData1 = mrz.substring(15, 30).replace("<", ""),
             dateOfBirth = mrz.substring(30, 36),
             sex = mrz.substring(37, 38).replace("<", ""),
             dateOfExpiry = mrz.substring(38, 44),
             nationality = mrz.substring(45, 48).replace("<", ""),
             optionalData2 = mrz.substring(48, 59).replace("<", ""),
-            primaryIdentifier = "",
-            secondaryIdentifier = ""
+            primaryIdentifier = primaryIdentifier,
+            secondaryIdentifier = secondaryIdentifier
         )
     }
 
     private fun parseTd2(mrz: String): Dg1Data {
-        // Simplified fallback for TD2
-        val documentCode = mrz.substring(0, 2)
-        val issuingState = mrz.substring(2, 5)
-        val documentNumber = mrz.substring(36, 45)
-        val dateOfBirth = mrz.substring(49, 55)
-        val sex = mrz.substring(56, 57)
+        val namesField = mrz.substring(5, 36)
+        val nameParts = namesField.split("<<")
+        val primaryIdentifier = nameParts[0].replace("<", " ").trim()
+        val secondaryIdentifier = if (nameParts.size > 1) nameParts[1].replace("<", " ").trim() else ""
+
         return Dg1Data(
-            documentCode = documentCode.replace("<", ""),
-            issuingState = issuingState.replace("<", ""),
-            documentNumber = documentNumber.replace("<", ""),
+            documentCode = mrz.substring(0, 2).replace("<", ""),
+            issuingState = mrz.substring(2, 5).replace("<", ""),
+            documentNumber = mrz.substring(36, 45).replace("<", ""),
             optionalData1 = "",
-            dateOfBirth = dateOfBirth,
-            sex = sex.replace("<", ""),
+            dateOfBirth = mrz.substring(49, 55),
+            sex = mrz.substring(56, 57).replace("<", ""),
             dateOfExpiry = mrz.substring(57, 63),
-            nationality = mrz.substring(63, 66).replace("<", ""),
-            optionalData2 = "",
-            primaryIdentifier = "",
-            secondaryIdentifier = ""
+            nationality = mrz.substring(46, 49).replace("<", ""),
+            optionalData2 = mrz.substring(64, 71).replace("<", ""),
+            primaryIdentifier = primaryIdentifier,
+            secondaryIdentifier = secondaryIdentifier
         )
     }
 }

@@ -84,4 +84,28 @@ class ReadPassportUseCaseTest {
             assertEquals(ReadProgress.ERROR, progresses.last())
         }
     } }
+
+    @Test(expected = AuthenticationException::class)
+    fun execute_authThrowsEPassportException_rethrowsOriginalException() { runBlocking {
+        val mrzData = MrzData("L898902C<", "690806", "940623")
+        coEvery { authenticator.authenticate(transceiver, any()) } throws AuthenticationException("Fail")
+        useCase.execute(transceiver, mrzData)
+    } }
+
+    @Test
+    fun execute_genericException_isWrappedInEPassportException() { runBlocking {
+        val mrzData = MrzData("L898902C<", "690806", "940623")
+        val secureTransceiver = mockk<NfcTransceiver>()
+        coEvery { authenticator.authenticate(transceiver, any()) } returns secureTransceiver
+        coEvery { reader.readDg1(secureTransceiver) } throws RuntimeException("Unexpected runtime error")
+        
+        try {
+            useCase.execute(transceiver, mrzData)
+            org.junit.Assert.fail("Exception should have been thrown")
+        } catch (e: Exception) {
+            org.junit.Assert.assertTrue(e is com.example.epassport.domain.exception.EPassportException)
+            assertEquals("Unexpected error during passport reading", e.message)
+            org.junit.Assert.assertTrue(e.cause is RuntimeException)
+        }
+    } }
 }

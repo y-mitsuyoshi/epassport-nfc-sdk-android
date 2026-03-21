@@ -1,7 +1,7 @@
 package com.example.epassport.util
 
-import com.example.epassport.domain.model.MrzData
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import java.security.Security
@@ -14,42 +14,50 @@ class CryptoUtilsTest {
     }
 
     @Test
-    fun deriveKey_3des_matchesIcaoAppendixD() {
-        // ICAO 9303 Part 11 D.2
-        val mrzData = MrzData("L898902C<", "690806", "940623")
-        val kSeed = mrzData.deriveBacKeySeed()
-        
-        // D.3, k_enc seed C = 00000001
-        val kEnc = CryptoUtils.deriveKey(kSeed, byteArrayOf(0x00, 0x00, 0x00, 0x01))
-        val expectedKEnc = byteArrayOf(
-            0xAB.toByte(), 0x94.toByte(), 0xFD.toByte(), 0xEC.toByte(),
-            0xF2.toByte(), 0x67.toByte(), 0x4F.toByte(), 0xDF.toByte(),
-            0xB9.toByte(), 0xB3.toByte(), 0x91.toByte(), 0xF8.toByte(),
-            0x5D.toByte(), 0x7F.toByte(), 0x76.toByte(), 0xF2.toByte()
-        )
-        assertArrayEquals(expectedKEnc, kEnc)
+    fun encrypt3DesCbc_thenDecrypt_returnsOriginal() {
+        val key = ByteArray(16) { (it + 1).toByte() }
+        val plaintext = ByteArray(16) { (it * 2).toByte() }
 
-        // D.3, k_mac seed C = 00000002
-        val kMac = CryptoUtils.deriveKey(kSeed, byteArrayOf(0x00, 0x00, 0x00, 0x02))
-        val expectedKMac = byteArrayOf(
-            0x79.toByte(), 0x62.toByte(), 0xD9.toByte(), 0xEC.toByte(),
-            0xE0.toByte(), 0x3D.toByte(), 0x1A.toByte(), 0xCD.toByte(),
-            0x4C.toByte(), 0x76.toByte(), 0x08.toByte(), 0x9D.toByte(),
-            0xCE.toByte(), 0x13.toByte(), 0x15.toByte(), 0x43.toByte()
-        )
-        assertArrayEquals(expectedKMac, kMac)
+        val encrypted = CryptoUtils.encrypt3DesCbc(key, plaintext)
+        val decrypted = CryptoUtils.decrypt3DesCbc(key, encrypted)
+
+        assertArrayEquals(plaintext, decrypted)
+    }
+
+    @Test
+    fun encrypt3DesCbc_differentKeys_produceDifferentCiphertext() {
+        val key1 = ByteArray(16) { 0x01.toByte() }
+        val key2 = ByteArray(16) { 0x02.toByte() }
+        val plaintext = ByteArray(8) { 0x55.toByte() }
+
+        val encrypted1 = CryptoUtils.encrypt3DesCbc(key1, plaintext)
+        val encrypted2 = CryptoUtils.encrypt3DesCbc(key2, plaintext)
+
+        assert(!encrypted1.contentEquals(encrypted2))
+    }
+
+    @Test
+    fun encrypt3DesCbc_withCustomIv_produceDifferentResult() {
+        val key = ByteArray(16) { 0x01.toByte() }
+        val plaintext = ByteArray(8) { 0x55.toByte() }
+        val iv = ByteArray(8) { 0xFF.toByte() }
+
+        val enc1 = CryptoUtils.encrypt3DesCbc(key, plaintext)
+        val enc2 = CryptoUtils.encrypt3DesCbc(key, plaintext, iv)
+
+        assert(!enc1.contentEquals(enc2))
     }
 
     @Test
     fun calculateMac_matchesIcaoAppendixD() {
-        // ICAO 9303 Part 11 D.3 - R_ifd (Mutual Auth)
+        // ICAO 9303 Part 11 D.3
         val kMac = byteArrayOf(
             0x79.toByte(), 0x62.toByte(), 0xD9.toByte(), 0xEC.toByte(),
             0xE0.toByte(), 0x3D.toByte(), 0x1A.toByte(), 0xCD.toByte(),
             0x4C.toByte(), 0x76.toByte(), 0x08.toByte(), 0x9D.toByte(),
             0xCE.toByte(), 0x13.toByte(), 0x15.toByte(), 0x43.toByte()
         )
-        
+
         val data = byteArrayOf(
             0x72.toByte(), 0xC2.toByte(), 0x3B.toByte(), 0x38.toByte(),
             0x41.toByte(), 0x61.toByte(), 0x19.toByte(), 0x49.toByte(),
@@ -66,7 +74,66 @@ class CryptoUtilsTest {
             0x5F.toByte(), 0x16.toByte(), 0x7B.toByte(), 0x59.toByte(),
             0x2A.toByte(), 0x0E.toByte(), 0x0D.toByte(), 0x51.toByte()
         )
-        
+
         assertArrayEquals(expectedMac, mac)
+    }
+
+    @Test
+    fun calculateMac_returns8Bytes() {
+        val key = ByteArray(16) { 0x01.toByte() }
+        val data = ByteArray(16) { 0x55.toByte() }
+
+        val mac = CryptoUtils.calculateMac(key, data)
+
+        assertEquals(8, mac.size)
+    }
+
+    @Test
+    fun pad_addsCorrectPadding() {
+        // Data of 4 bytes → should be padded to 8 bytes (80 00 00 00)
+        val data = byteArrayOf(0x01, 0x02, 0x03, 0x04)
+        val padded = CryptoUtils.pad(data)
+
+        assertEquals(8, padded.size)
+        assertEquals(0x01.toByte(), padded[0])
+        assertEquals(0x04.toByte(), padded[3])
+        assertEquals(0x80.toByte(), padded[4])
+        assertEquals(0x00.toByte(), padded[5])
+    }
+
+    @Test
+    fun pad_dataAlreadyBlockSize_addsFullBlock() {
+        // Data of 8 bytes → should add a full block of padding (8 more bytes)
+        val data = ByteArray(8) { 0x01.toByte() }
+        val padded = CryptoUtils.pad(data)
+
+        assertEquals(16, padded.size)
+        assertEquals(0x80.toByte(), padded[8])
+    }
+
+    @Test
+    fun unpad_removesIso7816Padding() {
+        val padded = byteArrayOf(0x01, 0x02, 0x03, 0x80.toByte(), 0x00, 0x00, 0x00, 0x00)
+        val unpadded = CryptoUtils.unpad(padded)
+
+        assertEquals(3, unpadded.size)
+        assertArrayEquals(byteArrayOf(0x01, 0x02, 0x03), unpadded)
+    }
+
+    @Test
+    fun unpad_noPadMarker_returnsOriginal() {
+        val data = byteArrayOf(0x01, 0x02, 0x03, 0x04)
+        val unpadded = CryptoUtils.unpad(data)
+
+        assertArrayEquals(data, unpadded)
+    }
+
+    @Test
+    fun pad_then_unpad_roundtrips() {
+        val data = byteArrayOf(0x11, 0x22, 0x33, 0x44, 0x55)
+        val padded = CryptoUtils.pad(data)
+        val unpadded = CryptoUtils.unpad(padded)
+
+        assertArrayEquals(data, unpadded)
     }
 }

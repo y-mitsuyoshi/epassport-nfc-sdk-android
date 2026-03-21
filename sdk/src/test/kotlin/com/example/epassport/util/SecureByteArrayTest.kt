@@ -7,40 +7,68 @@ import org.junit.Test
 class SecureByteArrayTest {
 
     @Test
-    fun createAndUse_storesAndClearsData() {
+    fun close_clearsData() {
         val initialData = byteArrayOf(1, 2, 3, 4, 5)
         val secureArray = SecureByteArray(initialData.clone())
 
-        secureArray.use {
-            assertArrayEquals(initialData, it)
-        }
+        // Data should be accessible before close
+        assertArrayEquals(initialData, secureArray.unwrap())
 
-        // After `use`, the internal array should be cleared
-        secureArray.use {
-            for (byte in it) {
-                assertEquals(0.toByte(), byte)
-            }
+        // After close, the internal array should be zeroed
+        secureArray.close()
+        for (byte in secureArray.unwrap()) {
+            assertEquals(0.toByte(), byte)
         }
     }
 
     @Test
-    fun clone_createsIndependentCopy() {
-        val initialData = byteArrayOf(1, 2, 3, 4, 5)
-        val secureArray1 = SecureByteArray(initialData.clone())
-        val secureArray2 = secureArray1.clone()
+    fun size_returnsCorrectLength() {
+        val data = byteArrayOf(1, 2, 3, 4, 5)
+        val secureArray = SecureByteArray(data)
 
-        secureArray1.use { arr1 ->
-            secureArray2.use { arr2 ->
-                assertArrayEquals(arr1, arr2)
-                
-                // Modify copy
-                arr2[0] = 99
-                assertEquals(99.toByte(), arr2[0])
-                assertEquals(1.toByte(), arr1[0]) // Original should be unchanged
-            }
+        assertEquals(5, secureArray.size)
+    }
+
+    @Test
+    fun size_afterClose_returnsSameLength() {
+        val data = byteArrayOf(1, 2, 3)
+        val secureArray = SecureByteArray(data)
+        secureArray.close()
+
+        // Size should still return the array length even after clearing
+        assertEquals(3, secureArray.size)
+    }
+
+    @Test
+    fun unwrap_returnsInternalArray() {
+        val data = byteArrayOf(10, 20, 30)
+        val secureArray = SecureByteArray(data)
+
+        val unwrapped = secureArray.unwrap()
+
+        // Should be the same object reference
+        assert(data === unwrapped)
+    }
+
+    @Test
+    fun useBlock_closesAfterBlock() {
+        val data = byteArrayOf(1, 2, 3, 4, 5)
+        val secureArray = SecureByteArray(data.clone())
+
+        secureArray.use { sa ->
+            assertArrayEquals(data, sa.unwrap())
         }
 
-        secureArray1.destroy()
-        secureArray2.destroy()
+        // After use block, data should be cleared
+        for (byte in secureArray.unwrap()) {
+            assertEquals(0.toByte(), byte)
+        }
+    }
+
+    @Test
+    fun multipleCloses_doesNotThrow() {
+        val secureArray = SecureByteArray(byteArrayOf(1, 2, 3))
+        secureArray.close()
+        secureArray.close() // Should not throw
     }
 }
