@@ -13,7 +13,7 @@ data class MrzData(
 ) {
     /** BAC 用の K_seed を導出 (SHA-1 の先頭16バイト) */
     fun deriveBacKeySeed(): ByteArray {
-        val docNum = padString(documentNumber, 9)
+        val docNum = padString(documentNumber.uppercase(), 9)
         val docNumCheckDigit = computeCheckDigit(docNum)
 
         val dob = padString(dateOfBirth, 6)
