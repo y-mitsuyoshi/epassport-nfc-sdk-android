@@ -30,7 +30,11 @@ class MainActivity : Activity() {
 
     private var nfcAdapter: NfcAdapter? = null
     private lateinit var statusTextView: TextView
-    private lateinit var mrzInput: EditText
+    private lateinit var docNoInput: EditText
+    private lateinit var dobInput: EditText
+    private lateinit var doeInput: EditText
+    private lateinit var scanButton: Button
+    private var isReadyToScan = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,26 +53,42 @@ class MainActivity : Activity() {
             setPadding(0, 0, 0, 32)
         }
         
-        mrzInput = EditText(this).apply {
-            hint = "Format: PassportNo,YYMMDD,YYMMDD"
-            // Default dummy (for example only, please replace with real MRZ pieces):
-            // L898902C<, 690806, 940623
-            setText("L898902C<,690806,940623")
+        docNoInput = EditText(this).apply {
+            hint = "旅券番号 (Passport No. 例:TK1234567)"
+        }
+        dobInput = EditText(this).apply {
+            hint = "生年月日 (Date of Birth 例:900305)"
+        }
+        doeInput = EditText(this).apply {
+            hint = "有効期限 (Date of Expiry 例:321120)"
         }
 
-        val guideText = TextView(this).apply {
-            text = "1. Edit MRZ (DocNo, Birth, Expiry)\n2. Tap Passport on NFC sensor."
+        scanButton = Button(this).apply {
+            text = "NFC読み取りを開始する"
             setPadding(0, 32, 0, 32)
+            setOnClickListener {
+                if (docNoInput.text.isBlank() || dobInput.text.isBlank() || doeInput.text.isBlank()) {
+                    statusTextView.text = "エラー：MRZ情報をすべて入力してください"
+                    statusTextView.setTextColor(Color.RED)
+                    return@setOnClickListener
+                }
+                isReadyToScan = true
+                statusTextView.text = "【スキャン待機中】\nスマホの裏側上部にパスポートを数秒間ぴったり当ててください..."
+                statusTextView.setTextColor(Color.BLUE)
+            }
         }
 
         statusTextView = TextView(this).apply {
-            text = "Waiting for NFC tag..."
+            text = "上記全てを入力後、「読み取り開始」ボタンを押してください"
             setTextColor(Color.GRAY)
+            setPadding(0, 32, 0, 32)
         }
 
         layout.addView(title)
-        layout.addView(mrzInput)
-        layout.addView(guideText)
+        layout.addView(docNoInput)
+        layout.addView(dobInput)
+        layout.addView(doeInput)
+        layout.addView(scanButton)
         layout.addView(statusTextView)
 
         setContentView(layout)
@@ -93,9 +113,15 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action || NfcAdapter.ACTION_TAG_DISCOVERED == intent.action) {
+            if (!isReadyToScan) {
+                statusTextView.text = "先に「NFC読み取りを開始する」ボタンを押してください"
+                statusTextView.setTextColor(Color.RED)
+                return
+            }
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             if (tag != null) {
-                statusTextView.text = "NFC Tag Detected. Starting read..."
+                statusTextView.text = "NFC反応あり。ICチップへ通信を開始します..."
+                statusTextView.setTextColor(Color.BLACK)
                 processTag(tag)
             }
         }
@@ -103,17 +129,17 @@ class MainActivity : Activity() {
 
     private fun processTag(tag: Tag) {
         val isoDep = IsoDep.get(tag) ?: run {
-            statusTextView.text = "Tag does not support IsoDep (ISO 14443-4)"
+            statusTextView.text = "エラー: このNFCタグはパスポート(ISO14443-4)ではありません"
+            statusTextView.setTextColor(Color.RED)
+            isReadyToScan = false
             return
         }
 
         // Parse user MRZ input
-        val mrzParts = mrzInput.text.toString().split(",")
-        if (mrzParts.size != 3) {
-            statusTextView.text = "Error: Invalid MRZ format in input."
-            return
-        }
-        val mrzData = MrzData(mrzParts[0].trim(), mrzParts[1].trim(), mrzParts[2].trim())
+        val docNo = docNoInput.text.toString().trim()
+        val dob = dobInput.text.toString().trim()
+        val doe = doeInput.text.toString().trim()
+        val mrzData = MrzData(docNo, dob, doe)
 
         // Use our NFC Transceiver wrapper
         val transceiver = AndroidNfcTransceiver(isoDep)
@@ -123,7 +149,8 @@ class MainActivity : Activity() {
         val reader = AppDataGroupReader()
         val useCase = ReadPassportUseCase(authenticator, reader)
 
-        statusTextView.text = "NFC Tag connected. Authenticating via BAC..."
+        statusTextView.text = "NFC Tag connected. BAC認証（鍵の生成と共有）を実行中..."
+        statusTextView.setTextColor(Color.BLUE)
 
         CoroutineScope(Dispatchers.Main).launch {
             try {
@@ -138,10 +165,14 @@ class MainActivity : Activity() {
                 }
                 val mrzText = passportData.dg1.documentNumber
                 val imgType = passportData.dg2?.mimeType ?: "No Image"
-                statusTextView.text = "Success! Read DGs.\nMRZ: $mrzText\nImage Type: $imgType"
+                statusTextView.text = "✅ 読み取り成功！ ICチップからデータを取得しました。\nMRZ: $mrzText\nImage Type: $imgType"
+                statusTextView.setTextColor(Color.GREEN)
+                isReadyToScan = false // Reset
             } catch (e: Exception) {
-                statusTextView.text = "Error: ${e.message}"
+                statusTextView.text = "❌ エラー発生: ${e.message}\n(途中でパスポートが離れたか、入力した文字が間違っている可能性があります)"
+                statusTextView.setTextColor(Color.RED)
                 e.printStackTrace()
+                isReadyToScan = false // Reset
             }
         }
     }
