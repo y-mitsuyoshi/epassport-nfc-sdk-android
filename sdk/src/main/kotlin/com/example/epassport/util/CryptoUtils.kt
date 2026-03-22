@@ -18,7 +18,7 @@ import javax.crypto.spec.SecretKeySpec
 object CryptoUtils {
     /** ICAO 9303 Part 11 で使用する 3DES-CBC 暗号化 */
     fun encrypt3DesCbc(key: ByteArray, data: ByteArray, iv: ByteArray = ByteArray(8)): ByteArray {
-        val cipher = Cipher.getInstance("DESede/CBC/NoPadding", "BC")
+        val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
         val secretKey = SecretKeySpec(key, "DESede")
         val ivSpec = IvParameterSpec(iv)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
@@ -27,7 +27,7 @@ object CryptoUtils {
 
     /** ICAO 9303 Part 11 で使用する 3DES-CBC 復号 */
     fun decrypt3DesCbc(key: ByteArray, data: ByteArray, iv: ByteArray = ByteArray(8)): ByteArray {
-        val cipher = Cipher.getInstance("DESede/CBC/NoPadding", "BC")
+        val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
         val secretKey = SecretKeySpec(key, "DESede")
         val ivSpec = IvParameterSpec(iv)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)

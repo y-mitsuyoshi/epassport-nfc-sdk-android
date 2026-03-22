@@ -65,7 +65,7 @@ class BacAuthenticatorTest {
             // Decrypt eIFD to extract S = RND.IFD || RND.IC || K.IFD (actually RND.IC || RND.IFD || K.IFD)
             val iv = ByteArray(8)
             val secretKey = SecretKeySpec(kEnc, "DESede")
-            val cipher = Cipher.getInstance("DESede/CBC/NoPadding", "BC")
+            val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
             val sDecrypted = cipher.doFinal(eIfd)
 
@@ -79,7 +79,7 @@ class BacAuthenticatorTest {
             System.arraycopy(rndIfdDecrypted, 0, rPicc, 8, 8)
             System.arraycopy(kIfd, 0, rPicc, 16, 16)
 
-            val cipherEnc = Cipher.getInstance("DESede/CBC/NoPadding", "BC")
+            val cipherEnc = Cipher.getInstance("DESede/CBC/NoPadding")
             cipherEnc.init(Cipher.ENCRYPT_MODE, secretKey, IvParameterSpec(iv))
             val ePicc = cipherEnc.doFinal(rPicc)
 
