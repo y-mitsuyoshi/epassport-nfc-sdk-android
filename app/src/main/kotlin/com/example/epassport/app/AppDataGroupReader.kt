@@ -8,8 +8,19 @@ import com.example.epassport.domain.port.NfcTransceiver
 class AppDataGroupReader : DataGroupReader {
     override suspend fun readDg1(transceiver: NfcTransceiver): Dg1Data {
         // FIXME: Read EF.DG1 raw bytes using Apdu commands and parse it!
-        // This is just a stub returning dummy data.
-        return Dg1Data(byteArrayOf(), "DUMMY_MRZ_DATA_READ")
+        return Dg1Data(
+            documentCode = "P",
+            issuingState = "XXX",
+            documentNumber = "DUMMY",
+            optionalData1 = "",
+            dateOfBirth = "000101",
+            sex = "M",
+            dateOfExpiry = "991231",
+            nationality = "XXX",
+            optionalData2 = "",
+            primaryIdentifier = "DOE",
+            secondaryIdentifier = "JOHN"
+        )
     }
 
     override suspend fun readDg2(transceiver: NfcTransceiver): Dg2Data {

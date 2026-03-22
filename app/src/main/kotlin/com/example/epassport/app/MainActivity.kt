@@ -136,8 +136,8 @@ class MainActivity : Activity() {
                         }
                     }
                 }
-                val mrzText = passportData.dg1.mrzText
-                val imgType = passportData.dg2.mimeType
+                val mrzText = passportData.dg1.documentNumber
+                val imgType = passportData.dg2?.mimeType ?: "No Image"
                 statusTextView.text = "Success! Read DGs.\nMRZ: $mrzText\nImage Type: $imgType"
             } catch (e: Exception) {
                 statusTextView.text = "Error: ${e.message}"
