@@ -157,7 +157,7 @@ class MainActivity : Activity() {
         activityScope.launch {
             val result = EPassportReader.read(tag, mrzData) { progress ->
                 // Dispatch back to main thread for UI updates
-                launch(Dispatchers.Main) {
+                activityScope.launch(Dispatchers.Main) {
                     statusTextView.text = "Progress: $progress"
                 }
             }

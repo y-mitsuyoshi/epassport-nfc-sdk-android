@@ -24,7 +24,7 @@ class IcaoDataGroupReader : DataGroupReader {
         return Dg2Parser.parse(dg2Bytes)
     }
 
-    private suspend fun readDataGroup(transceiver: NfcTransceiver, fileId: ByteArray): ByteArray {
+    internal suspend fun readDataGroup(transceiver: NfcTransceiver, fileId: ByteArray): ByteArray {
         // 1. SELECT FILE
         val selectCmd = ApduCommand.selectFile(fileId)
         val selectResponse = transceiver.transceive(selectCmd)
@@ -48,19 +48,16 @@ class IcaoDataGroupReader : DataGroupReader {
         var remainingData = sequenceLength
         
         if (transceiver.isExtendedLengthSupported) {
-            // Extended APDUでの分割読み出し（バッファ限界による通信エラーを防ぎつつ、高速に読み出す）
-            val maxLe = 4096 // 互換性と効率が最も高いチャンクサイズ
-
+            // Extended APDU: 最大 65536 バイトずつ高速読み出し
             while (remainingData > 0) {
-                val le = if (remainingData > maxLe) maxLe else remainingData
-                val readCmd = ApduCommand.readBinaryExtended(offset, le)
+                // le=0 は ISO7816-4 で「65536 バイト」を意味する
+                val chunkLe = if (remainingData > 65536) 0 else remainingData
+                val readCmd = ApduCommand.readBinaryExtended(offset, chunkLe)
                 val response = transceiver.transceive(readCmd)
                 checkStatus(response)
-
                 val data = response.copyOfRange(0, response.size - 2)
                 outputStream.write(data)
-
-                offset += data.size // 読み出した実データ分だけオフセットを進める
+                offset += data.size
                 remainingData -= data.size
             }
         } else {

@@ -55,6 +55,8 @@ object ApduCommand {
 
     /** READ BINARY コマンド（拡張レングス・フォーマット） */
     fun readBinaryExtended(offset: Int, le: Int): ByteArray {
+        require(offset in 0..0x7FFF) { "Extended offset must be in 0..32767" }
+        require(le in 0..65536) { "Extended Le must be in 0..65536 (0 means 65536)" }
         val p1 = (offset ushr 8).toByte()
         val p2 = (offset and 0xFF).toByte()
         return byteArrayOf(
