@@ -46,10 +46,25 @@ object ApduCommand {
 
     /** READ BINARY コマンド（ショートフォーマット：オフセットが15ビット以内の場合） */
     fun readBinary(offset: Int, le: Int): ByteArray {
+        require(le in 0..256) { "Short APDU Le must be in 0..256 (0 means 256)" }
         val p1 = (offset ushr 8).toByte()
         val p2 = (offset and 0xFF).toByte()
         return byteArrayOf(
             0x00.toByte(), 0xB0.toByte(), p1, p2, le.toByte()
+        )
+    }
+
+    /** READ BINARY コマンド（拡張レングス・フォーマット） */
+    fun readBinaryExtended(offset: Int, le: Int): ByteArray {
+        require(offset in 0..0x7FFF) { "Extended offset must be in 0..32767" }
+        require(le in 0..65536) { "Extended Le must be in 0..65536 (0 means 65536)" }
+        val p1 = (offset ushr 8).toByte()
+        val p2 = (offset and 0xFF).toByte()
+        return byteArrayOf(
+            0x00.toByte(), 0xB0.toByte(), p1, p2,
+            0x00.toByte(),
+            (le ushr 8).toByte(),
+            (le and 0xFF).toByte()
         )
     }
 }

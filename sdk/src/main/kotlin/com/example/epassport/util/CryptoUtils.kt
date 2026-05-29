@@ -16,10 +16,20 @@ import javax.crypto.spec.SecretKeySpec
  * 暗号処理のユーティリティ。BouncyCastle を内部的に利用。
  */
 object CryptoUtils {
+    private fun expandKey(key: ByteArray): ByteArray {
+        if (key.size == 16) {
+            val key24 = ByteArray(24)
+            System.arraycopy(key, 0, key24, 0, 16)
+            System.arraycopy(key, 0, key24, 16, 8)
+            return key24
+        }
+        return key
+    }
+
     /** ICAO 9303 Part 11 で使用する 3DES-CBC 暗号化 */
     fun encrypt3DesCbc(key: ByteArray, data: ByteArray, iv: ByteArray = ByteArray(8)): ByteArray {
         val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
-        val secretKey = SecretKeySpec(key, "DESede")
+        val secretKey = SecretKeySpec(expandKey(key), "DESede")
         val ivSpec = IvParameterSpec(iv)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
         return cipher.doFinal(data)
@@ -28,7 +38,7 @@ object CryptoUtils {
     /** ICAO 9303 Part 11 で使用する 3DES-CBC 復号 */
     fun decrypt3DesCbc(key: ByteArray, data: ByteArray, iv: ByteArray = ByteArray(8)): ByteArray {
         val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
-        val secretKey = SecretKeySpec(key, "DESede")
+        val secretKey = SecretKeySpec(expandKey(key), "DESede")
         val ivSpec = IvParameterSpec(iv)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
         return cipher.doFinal(data)
@@ -69,4 +79,24 @@ object CryptoUtils {
         }
         return data // paddingが見つからない場合はそのまま
     }
+
+    /**
+     * DES 奇数パリティビット調整ロジック。
+     * 各バイトの最下位ビットを調整して、1であるビットの総数を奇数にします。
+     */
+    fun adjustParity(bytes: ByteArray) {
+        for (i in bytes.indices) {
+            val b = bytes[i].toInt()
+            var bits = 0
+            for (j in 1..7) {
+                if (((b shr j) and 1) == 1) bits++
+            }
+            if (bits % 2 == 0) {
+                bytes[i] = (b or 1).toByte()
+            } else {
+                bytes[i] = (b and -2).toByte()
+            }
+        }
+    }
 }
+

@@ -58,4 +58,27 @@ class MrzDataTest {
         assertArrayEquals(expectedKEnc, bacKey.encKey)
         assertArrayEquals(expectedKMac, bacKey.macKey)
     }
+
+    @Test
+    fun deriveBacKeys_yumaPassport() {
+        val mrzData = MrzData("TR6930600", "901008", "261017")
+        val bacKey = mrzData.deriveBacKeys()
+
+        val expectedKEnc = byteArrayOf(
+            0xC8.toByte(), 0xE3.toByte(), 0xF4.toByte(), 0xEF.toByte(),
+            0xBF.toByte(), 0xD9.toByte(), 0xC4.toByte(), 0x61.toByte(),
+            0xC8.toByte(), 0x45.toByte(), 0x08.toByte(), 0x10.toByte(),
+            0x13.toByte(), 0x86.toByte(), 0x6E.toByte(), 0x68.toByte()
+        )
+
+        val expectedKMac = byteArrayOf(
+            0xE9.toByte(), 0x2A.toByte(), 0x2F.toByte(), 0x7A.toByte(),
+            0xEC.toByte(), 0x25.toByte(), 0x76.toByte(), 0xD5.toByte(),
+            0xAB.toByte(), 0x61.toByte(), 0x0E.toByte(), 0xB6.toByte(),
+            0x92.toByte(), 0x79.toByte(), 0xDC.toByte(), 0xB5.toByte()
+        )
+        
+        assertArrayEquals(expectedKEnc, bacKey.encKey)
+        assertArrayEquals(expectedKMac, bacKey.macKey)
+    }
 }

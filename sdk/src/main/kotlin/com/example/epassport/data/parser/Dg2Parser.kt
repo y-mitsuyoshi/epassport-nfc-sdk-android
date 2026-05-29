@@ -23,7 +23,7 @@ object Dg2Parser {
             // Actually, we can just do a brute force search for JPEG / JP2 headers in the payload
             // as ICAO facial structures can vary.
             
-            val faceImageResult = extractImage(data)
+            val faceImageResult = extractImage(bitNode.value)
                 ?: throw InvalidDataException("Facial image header (JPEG/JP2000) not found in DG2")
                 
             return Dg2Data(faceImageResult.first, faceImageResult.second)

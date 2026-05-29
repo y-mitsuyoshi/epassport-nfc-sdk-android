@@ -6,8 +6,6 @@ import com.example.epassport.domain.model.PassportData
 import com.example.epassport.domain.port.DataGroupReader
 import com.example.epassport.domain.port.NfcTransceiver
 import com.example.epassport.domain.port.PassportAuthenticator
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * パスポート読み取りの進行状況を通知するコールバックインターフェース。
@@ -28,11 +26,16 @@ class ReadPassportUseCase(
     private val authenticator: PassportAuthenticator,
     private val reader: DataGroupReader
 ) {
+    /**
+     * パスポートから DG1, DG2 を読み取るオーケストレーション。
+     * 呼び出し元（EPassportReader）が IO スレッド上での実行を保証するため、
+     * このメソッド自体は dispatcher の切り替えを行わない。
+     */
     suspend fun execute(
         transceiver: NfcTransceiver,
         mrzData: MrzData,
         onProgress: (ReadProgress) -> Unit = {}
-    ): PassportData = withContext(Dispatchers.IO) {
+    ): PassportData {
         try {
             onProgress(ReadProgress.CONNECTING)
             
@@ -45,7 +48,9 @@ class ReadPassportUseCase(
             val secureTransceiver = try {
                 authenticator.authenticate(transceiver, bacKey)
             } finally {
-                bacKey.clear() // 鍵は認証後すぐにメモリから破棄する
+                // セキュリティ要件: 認証の成否にかかわらず、BAC 鍵は
+                // 使用直後にヒープメモリからゼロクリアする。
+                bacKey.clear()
             }
 
             // 3. Read DG1
@@ -57,7 +62,7 @@ class ReadPassportUseCase(
             val dg2 = reader.readDg2(secureTransceiver)
 
             onProgress(ReadProgress.SUCCESS)
-            return@withContext PassportData(dg1, dg2)
+            return PassportData(dg1, dg2)
 
         } catch (e: Exception) {
             onProgress(ReadProgress.ERROR)
