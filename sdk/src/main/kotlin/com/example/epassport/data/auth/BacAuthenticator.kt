@@ -92,22 +92,8 @@ class BacAuthenticator : PassportAuthenticator {
         digest.update(counter)
         val hash = digest.digest()
         val keyBytes = hash.copyOfRange(0, 16)
-        adjustParity(keyBytes)
+        CryptoUtils.adjustParity(keyBytes)
         return keyBytes
     }
 
-    private fun adjustParity(bytes: ByteArray) {
-        for (i in bytes.indices) {
-            val b = bytes[i].toInt()
-            var bits = 0
-            for (j in 1..7) {
-                if (((b shr j) and 1) == 1) bits++
-            }
-            if (bits % 2 == 0) {
-                bytes[i] = (b or 1).toByte()
-            } else {
-                bytes[i] = (b and -2).toByte()
-            }
-        }
-    }
 }

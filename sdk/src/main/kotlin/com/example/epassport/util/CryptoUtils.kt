@@ -69,4 +69,24 @@ object CryptoUtils {
         }
         return data // paddingが見つからない場合はそのまま
     }
+
+    /**
+     * DES 奇数パリティビット調整ロジック。
+     * 各バイトの最下位ビットを調整して、1であるビットの総数を奇数にします。
+     */
+    fun adjustParity(bytes: ByteArray) {
+        for (i in bytes.indices) {
+            val b = bytes[i].toInt()
+            var bits = 0
+            for (j in 1..7) {
+                if (((b shr j) and 1) == 1) bits++
+            }
+            if (bits % 2 == 0) {
+                bytes[i] = (b or 1).toByte()
+            } else {
+                bytes[i] = (b and -2).toByte()
+            }
+        }
+    }
 }
+

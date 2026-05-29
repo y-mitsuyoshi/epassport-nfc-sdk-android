@@ -32,22 +32,34 @@ class IcaoDataGroupReader : DataGroupReader {
 
         // 2. Read first 8 bytes to determine TLV tag and length.
         // ISO7816-4 の TLV 長フィールドは最大4バイト（0x83 + 3バイト値）になるため、
-        // タグ1バイト + 長さ最大4バイト = 計5バイトが必要。余裕を持って8バイト読む。
+        // タグ1-3バイト + 長さ最大4バイト = 計5-7バイトが必要。余裕を持って8バイト読む。
         val initialReadCmd = ApduCommand.readBinary(0, 8)
         val headerResponse = transceiver.transceive(initialReadCmd)
         checkStatus(headerResponse)
         
         val headerBytes = headerResponse.copyOfRange(0, headerResponse.size - 2)
         
-        // Parse Length
-        val lengthResult = TlvParser.readLength(headerBytes, 1) // First byte is Tag (e.g. 0x61, 0x75)
+        // 異常系ガード: 最低でも2バイト以上（Tag + Lengthの最初の1バイト）必要。
+        if (headerBytes.size < 2) {
+            throw com.example.epassport.domain.exception.InvalidDataException(
+                "Invalid or truncated TLV header response (size=${headerBytes.size})"
+            )
+        }
         
-        val sequenceLength = 1 + lengthResult.bytesRead + lengthResult.length
+        // Parse Tag and Length (可変バイト長タグに完全対応)
+        val tagResult = TlvParser.readTag(headerBytes, 0)
+        val lengthResult = TlvParser.readLength(headerBytes, tagResult.bytesRead)
+        
+        val sequenceLength = tagResult.bytesRead + lengthResult.bytesRead + lengthResult.length
         
         val outputStream = ByteArrayOutputStream()
         
-        var offset = 0
-        var remainingData = sequenceLength
+        // すでに initial read で取得済みのヘッダデータを書き込む (二重通信の排除による高速化)
+        val initialBytesToWrite = minOf(headerBytes.size, sequenceLength)
+        outputStream.write(headerBytes, 0, initialBytesToWrite)
+        
+        var offset = initialBytesToWrite
+        var remainingData = sequenceLength - initialBytesToWrite
         
         if (transceiver.isExtendedLengthSupported) {
             // Extended APDU: 最大 65536 バイトずつ高速読み出し
@@ -58,6 +70,12 @@ class IcaoDataGroupReader : DataGroupReader {
                 val response = transceiver.transceive(readCmd)
                 checkStatus(response)
                 val data = response.copyOfRange(0, response.size - 2)
+                
+                // 安全弁: NFCチップが9000成功応答を返したにも関わらずボディが空の場合のフリーズ防止
+                if (data.isEmpty()) {
+                    throw EPassportException("NFC card returned empty data during Extended Read Binary")
+                }
+                
                 outputStream.write(data)
                 offset += data.size
                 remainingData -= data.size
@@ -78,6 +96,12 @@ class IcaoDataGroupReader : DataGroupReader {
                 checkStatus(response)
 
                 val data = response.copyOfRange(0, response.size - 2)
+                
+                // 安全弁: 無限ループフリーズ防止
+                if (data.isEmpty()) {
+                    throw EPassportException("NFC card returned empty data during Short APDU Read Binary")
+                }
+                
                 outputStream.write(data)
 
                 offset += data.size // Update offset by actual read data size

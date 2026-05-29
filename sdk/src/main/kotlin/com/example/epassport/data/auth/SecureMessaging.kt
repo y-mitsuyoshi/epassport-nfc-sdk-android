@@ -15,8 +15,10 @@ class SecureMessaging(
     private val delegate: NfcTransceiver,
     private val ksEnc: ByteArray,
     private val ksMac: ByteArray,
-    private val ssc: ByteArray
+    ssc: ByteArray
 ) : NfcTransceiver {
+
+    private val ssc: ByteArray = ssc.copyOf()
 
     override val isConnected: Boolean get() = delegate.isConnected
     override var timeout: Int
@@ -108,8 +110,8 @@ class SecureMessaging(
         if (isExtendedSM) {
             // Extended Lc: 0x00 + 2バイトの長さ情報
             protectedCmdStream.write(0x00)
-            protectedCmdStream.write((totalLc ushr 8) and 0xFF)
-            protectedCmdStream.write(totalLc and 0xFF)
+            protectedCmdStream.write(((totalLc ushr 8) and 0xFF).toByte().toInt())
+            protectedCmdStream.write((totalLc and 0xFF).toByte().toInt())
         } else {
             // Short Lc: 1バイトの長さ情報
             protectedCmdStream.write(totalLc)
@@ -168,6 +170,9 @@ class SecureMessaging(
             val (len, lenBytes) = parseLength(data, offset)
             offset += lenBytes
             
+            if (offset + len > data.size) {
+                throw AuthenticationException("SM response data truncated or invalid length")
+            }
             val value = data.copyOfRange(offset, offset + len)
             offset += len
 
@@ -232,6 +237,14 @@ class SecureMessaging(
 
     internal data class ApduParseResult(val lc: Int, val le: Int, val dataField: ByteArray?)
 
+    /**
+     * 送信 APDU を解析して Lc, Le, データ部に分解する。
+     *
+     * 【制限事項】
+     * 本実装は eMRTD ReadBinary 特化型であり、Extended Le-only APDU（7バイト長）に対応しています。
+     * Extended Lc + data + Le（例: [CLA INS P1 P2 0x00 LcHi LcLo ...data... LeHi LeLo]）など、
+     * データを送信する拡張長APDUには対応していません。
+     */
     internal fun parseApdu(command: ByteArray): ApduParseResult {
         // ISO7816-4 コマンド形式:
         //   Short APDU with Le only:  [CLA INS P1 P2 Le]           (5バイト)
