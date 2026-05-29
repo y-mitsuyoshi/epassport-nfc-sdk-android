@@ -11,7 +11,7 @@ import org.junit.Test
 class IcaoDataGroupReaderTest {
 
     @Test
-    fun readDataGroup_extendedApdu_singleChunk() = runBlocking {
+    fun readDataGroup_extendedApdu_singleChunk() { runBlocking {
         val transceiver = mockk<NfcTransceiver>(relaxed = true)
         coEvery { transceiver.isExtendedLengthSupported } returns true
 
@@ -47,10 +47,10 @@ class IcaoDataGroupReaderTest {
         assertEquals(12, result.size)
         // SELECT + initial read + one extended read = 3 calls
         assertEquals(3, transceiveCount)
-    }
+    } }
 
     @Test
-    fun readDataGroup_extendedApdu_multipleChunks() = runBlocking {
+    fun readDataGroup_extendedApdu_multipleChunks() { runBlocking {
         val transceiver = mockk<NfcTransceiver>(relaxed = true)
         coEvery { transceiver.isExtendedLengthSupported } returns true
 
@@ -91,10 +91,10 @@ class IcaoDataGroupReaderTest {
         // 修正後: initial read の 8バイト再利用により、残りの 65533 バイトを 1回 の Extended APDU チャンクで読み出せる。
         // SELECT + initial read + Extended read (65533) = 計 3 calls
         assertEquals(3, transceiveCount)
-    }
+    } }
 
     @Test(expected = EPassportException::class)
-    fun readDataGroup_shortApdu_32kBoundary_throws() = runBlocking {
+    fun readDataGroup_shortApdu_32kBoundary_throws() { runBlocking {
         val transceiver = mockk<NfcTransceiver>(relaxed = true)
         coEvery { transceiver.isExtendedLengthSupported } returns false
 
@@ -123,10 +123,10 @@ class IcaoDataGroupReaderTest {
         // sequenceLength = 1 + 3 + 32894 = 32898
         // Short APDU with maxLe=255 will cross 32768 boundary before finishing
         reader.readDataGroup(transceiver, byteArrayOf(0x01, 0x01))
-    }
+    } }
 
     @Test
-    fun readDataGroup_shortApdu_under32k_succeeds() = runBlocking {
+    fun readDataGroup_shortApdu_under32k_succeeds() { runBlocking {
         val transceiver = mockk<NfcTransceiver>(relaxed = true)
         coEvery { transceiver.isExtendedLengthSupported } returns false
 
@@ -157,10 +157,10 @@ class IcaoDataGroupReaderTest {
         assertEquals(502, result.size)
         // SELECT + initial read + ceil(502/255)=2 short reads = 4 calls
         assertEquals(4, transceiveCount)
-    }
+    } }
 
     @Test(expected = com.example.epassport.domain.exception.InvalidDataException::class)
-    fun readDataGroup_truncatedHeader_throwsInvalidDataException() = runBlocking {
+    fun readDataGroup_truncatedHeader_throwsInvalidDataException() { runBlocking {
         val transceiver = mockk<NfcTransceiver>(relaxed = true)
         coEvery { transceiver.transceive(any()) } answers {
             val cmd = arg<ByteArray>(0)
@@ -176,10 +176,10 @@ class IcaoDataGroupReaderTest {
 
         val reader = IcaoDataGroupReader()
         reader.readDataGroup(transceiver, byteArrayOf(0x01, 0x01))
-    }
+    } }
 
     @Test(expected = EPassportException::class)
-    fun readDataGroup_emptyDataResponse_preventsInfiniteLoop() = runBlocking {
+    fun readDataGroup_emptyDataResponse_preventsInfiniteLoop() { runBlocking {
         val transceiver = mockk<NfcTransceiver>(relaxed = true)
         coEvery { transceiver.isExtendedLengthSupported } returns true
         coEvery { transceiver.transceive(any()) } answers {
@@ -207,5 +207,5 @@ class IcaoDataGroupReaderTest {
 
         val reader = IcaoDataGroupReader()
         reader.readDataGroup(transceiver, byteArrayOf(0x01, 0x01))
-    }
+    } }
 }
