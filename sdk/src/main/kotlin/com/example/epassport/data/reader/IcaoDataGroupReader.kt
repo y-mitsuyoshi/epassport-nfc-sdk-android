@@ -48,12 +48,21 @@ class IcaoDataGroupReader : DataGroupReader {
         var remainingData = sequenceLength
         
         if (transceiver.isExtendedLengthSupported) {
-            // 一括読み出し（Extended APDUを使用）
-            val readCmd = ApduCommand.readBinaryExtended(offset, remainingData)
-            val response = transceiver.transceive(readCmd)
-            checkStatus(response)
-            val data = response.copyOfRange(0, response.size - 2)
-            outputStream.write(data)
+            // Extended APDUでの分割読み出し（バッファ限界による通信エラーを防ぎつつ、高速に読み出す）
+            val maxLe = 4096 // 互換性と効率が最も高いチャンクサイズ
+
+            while (remainingData > 0) {
+                val le = if (remainingData > maxLe) maxLe else remainingData
+                val readCmd = ApduCommand.readBinaryExtended(offset, le)
+                val response = transceiver.transceive(readCmd)
+                checkStatus(response)
+
+                val data = response.copyOfRange(0, response.size - 2)
+                outputStream.write(data)
+
+                offset += data.size // 読み出した実データ分だけオフセットを進める
+                remainingData -= data.size
+            }
         } else {
             // chunk reading (下位互換用：従来通り255バイトずつ細切れに読み出す)
             val maxLe = 255 // extended Le might fail on some passports, sticking to short LE in BAC

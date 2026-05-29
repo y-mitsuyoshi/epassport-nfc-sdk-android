@@ -129,12 +129,33 @@ class SecureMessaging(
         if (do97 != null) totalLc += do97.size
         totalLc += do8e.size
         
-        protectedCmdStream.write(totalLc)
+        // 元の Le が 255 を超えているか、あるいはカプセル化後のデータ長（totalLc）が 255 を超えている場合、
+        // ラッピング後のコマンドも Extended APDU フォーマットにする
+        val isExtendedSM = le > 255 || totalLc > 255
+
+        if (isExtendedSM) {
+            // Extended Lc: 0x00 + 2バイトの長さ情報
+            protectedCmdStream.write(0x00)
+            protectedCmdStream.write((totalLc ushr 8) and 0xFF)
+            protectedCmdStream.write(totalLc and 0xFF)
+        } else {
+            // Short Lc: 1バイトの長さ情報
+            protectedCmdStream.write(totalLc)
+        }
+
         if (do87 != null) protectedCmdStream.write(do87)
         if (do97 != null) protectedCmdStream.write(do97)
         protectedCmdStream.write(do8e)
-        // Le for wrapping is always 0x00
-        protectedCmdStream.write(0x00)
+
+        // 最後の Le の書き込み
+        if (isExtendedSM) {
+            // Extended Le: 2バイトの 0x00 0x00 を付与
+            protectedCmdStream.write(0x00)
+            protectedCmdStream.write(0x00)
+        } else {
+            // Short Le: 1バイトの 0x00 を付与
+            protectedCmdStream.write(0x00)
+        }
 
         // 7. Transceive
         val response = delegate.transceive(protectedCmdStream.toByteArray())
