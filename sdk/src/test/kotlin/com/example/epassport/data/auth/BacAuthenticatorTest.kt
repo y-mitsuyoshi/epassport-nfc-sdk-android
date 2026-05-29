@@ -62,15 +62,15 @@ class BacAuthenticatorTest {
             val cmdData = command.copyOfRange(5, 5 + 40) // Lc=40, data part
             val eIfd = cmdData.copyOfRange(0, 32)
 
-            // Decrypt eIFD to extract S = RND.IFD || RND.IC || K.IFD (actually RND.IC || RND.IFD || K.IFD)
+            // Decrypt eIFD to extract S = RND.IFD || RND.IC || K.IFD
             val iv = ByteArray(8)
             val secretKey = SecretKeySpec(kEnc, "DESede")
             val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey, IvParameterSpec(iv))
             val sDecrypted = cipher.doFinal(eIfd)
 
-            // s = RND.IC || RND.IFD || K.IFD
-            val rndIfdDecrypted = sDecrypted.copyOfRange(8, 16)
+            // s = RND.IFD || RND.IC || K.IFD
+            val rndIfdDecrypted = sDecrypted.copyOfRange(0, 8)
             val kIfd = sDecrypted.copyOfRange(16, 32)
 
             // Build R = RND.IC || RND.IFD || K.IC (using kIfd as mock K.IC)

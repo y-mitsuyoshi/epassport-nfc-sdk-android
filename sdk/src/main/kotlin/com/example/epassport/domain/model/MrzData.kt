@@ -12,21 +12,23 @@ data class MrzData(
     val dateOfBirth: String,      // YYMMDD
     val dateOfExpiry: String      // YYMMDD
 ) {
-    /** BAC 用の K_seed を導出 (SHA-1 の先頭16バイト) */
-    fun deriveBacKeySeed(): ByteArray {
+    val mrzInformation: String get() {
         val docNum = padString(documentNumber.uppercase(), 9)
         val docNumCheckDigit = computeCheckDigit(docNum)
-
         val dob = padString(dateOfBirth, 6)
         val dobCheckDigit = computeCheckDigit(dob)
-
         val doe = padString(dateOfExpiry, 6)
         val doeCheckDigit = computeCheckDigit(doe)
+        return "$docNum$docNumCheckDigit$dob$dobCheckDigit$doe$doeCheckDigit"
+    }
 
-        val mrzInformation = "$docNum$docNumCheckDigit$dob$dobCheckDigit$doe$doeCheckDigit"
+    /** BAC 用の K_seed を導出 (SHA-1 の先頭16バイト) */
+    fun deriveBacKeySeed(): ByteArray {
+        val mrzInfo = mrzInformation
+        System.err.println("MRZ Info: '$mrzInfo'")
 
         val digest = MessageDigest.getInstance("SHA-1")
-        digest.update(mrzInformation.toByteArray(Charsets.UTF_8))
+        digest.update(mrzInfo.toByteArray(Charsets.UTF_8))
         val hash = digest.digest()
 
         // ICAO 9303 Part 11: K_seed は SHA-1 ハッシュの先頭16バイト

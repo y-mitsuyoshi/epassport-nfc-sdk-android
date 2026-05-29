@@ -16,10 +16,20 @@ import javax.crypto.spec.SecretKeySpec
  * 暗号処理のユーティリティ。BouncyCastle を内部的に利用。
  */
 object CryptoUtils {
+    private fun expandKey(key: ByteArray): ByteArray {
+        if (key.size == 16) {
+            val key24 = ByteArray(24)
+            System.arraycopy(key, 0, key24, 0, 16)
+            System.arraycopy(key, 0, key24, 16, 8)
+            return key24
+        }
+        return key
+    }
+
     /** ICAO 9303 Part 11 で使用する 3DES-CBC 暗号化 */
     fun encrypt3DesCbc(key: ByteArray, data: ByteArray, iv: ByteArray = ByteArray(8)): ByteArray {
         val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
-        val secretKey = SecretKeySpec(key, "DESede")
+        val secretKey = SecretKeySpec(expandKey(key), "DESede")
         val ivSpec = IvParameterSpec(iv)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
         return cipher.doFinal(data)
@@ -28,7 +38,7 @@ object CryptoUtils {
     /** ICAO 9303 Part 11 で使用する 3DES-CBC 復号 */
     fun decrypt3DesCbc(key: ByteArray, data: ByteArray, iv: ByteArray = ByteArray(8)): ByteArray {
         val cipher = Cipher.getInstance("DESede/CBC/NoPadding")
-        val secretKey = SecretKeySpec(key, "DESede")
+        val secretKey = SecretKeySpec(expandKey(key), "DESede")
         val ivSpec = IvParameterSpec(iv)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
         return cipher.doFinal(data)

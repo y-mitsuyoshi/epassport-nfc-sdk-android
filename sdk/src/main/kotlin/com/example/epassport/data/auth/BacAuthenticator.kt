@@ -27,10 +27,10 @@ class BacAuthenticator : PassportAuthenticator {
         random.nextBytes(rndIfd)
         random.nextBytes(kIfd)
 
-        // 3. Build S = RND.IC || RND.IFD || K.IFD
+        // 3. Build S = RND.IFD || RND.IC || K.IFD
         val s = ByteArray(32)
-        System.arraycopy(rndIc, 0, s, 0, 8)
-        System.arraycopy(rndIfd, 0, s, 8, 8)
+        System.arraycopy(rndIfd, 0, s, 0, 8)
+        System.arraycopy(rndIc, 0, s, 8, 8)
         System.arraycopy(kIfd, 0, s, 16, 16)
 
         // 4. Encrypt S and compute MAC
@@ -46,7 +46,9 @@ class BacAuthenticator : PassportAuthenticator {
         val authCmdResponse = transceiver.transceive(authCmd)
 
         if (authCmdResponse.size < 42) {
-            throw AuthenticationException("Invalid EXTERNAL AUTHENTICATE response length")
+            val sw1 = if (authCmdResponse.size >= 2) authCmdResponse[authCmdResponse.size - 2].toInt() and 0xFF else 0
+            val sw2 = if (authCmdResponse.size >= 1) authCmdResponse[authCmdResponse.size - 1].toInt() and 0xFF else 0
+            throw AuthenticationException("EXTERNAL AUTHENTICATE failed. SW1=${String.format("%02X", sw1)}, SW2=${String.format("%02X", sw2)} (Response size=${authCmdResponse.size})")
         }
 
         val responseData = authCmdResponse.copyOfRange(0, 40)
