@@ -140,8 +140,8 @@ class IcaoDataGroupReaderTest {
                     val offset = ((cmd[2].toInt() and 0xFF) shl 8) or (cmd[3].toInt() and 0xFF)
                     val le = cmd[4].toInt() and 0xFF
                     if (offset == 0 && le == 8) {
-                        // tag=0x61, len=500 => sequenceLength = 1+1+500 = 502, padded to 8 bytes
-                        byteArrayOf(0x61, 0x01, 0xF4.toByte(), 0x00, 0x00, 0x00, 0x00, 0x00, 0x90.toByte(), 0x00.toByte())
+                        // tag=0x61, len=500 => sequenceLength = 1+3+500 = 504, padded to 8 bytes
+                        byteArrayOf(0x61, 0x82.toByte(), 0x01, 0xF4.toByte(), 0x00, 0x00, 0x00, 0x00, 0x90.toByte(), 0x00.toByte())
                     } else {
                         ByteArray(le) { 0xAA.toByte() } + byteArrayOf(0x90.toByte(), 0x00.toByte())
                     }
@@ -153,9 +153,9 @@ class IcaoDataGroupReaderTest {
         val reader = IcaoDataGroupReader()
         val result = reader.readDataGroup(transceiver, byteArrayOf(0x01, 0x01))
 
-        // sequenceLength = 502
-        assertEquals(502, result.size)
-        // SELECT + initial read + ceil(502/255)=2 short reads = 4 calls
+        // sequenceLength = 504
+        assertEquals(504, result.size)
+        // SELECT + initial read + ceil(496/255)=2 short reads = 4 calls
         assertEquals(4, transceiveCount)
     } }
 
