@@ -20,7 +20,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import android.widget.LinearLayout
-import android.view.ViewGroup
 import android.graphics.Color
 import android.view.Gravity
 
@@ -123,6 +122,7 @@ class MainActivity : Activity() {
                 statusTextView.setTextColor(Color.RED)
                 return
             }
+            @Suppress("DEPRECATION")
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             if (tag != null) {
                 statusTextView.text = "NFC反応あり。ICチップへ通信を開始します..."
@@ -136,7 +136,7 @@ class MainActivity : Activity() {
         // EPassportReader.read() 内部でも同様に IsoDep.get(tag) を呼ぶが、
         // ここで事前チェックすることで「ISO14443-4 非対応タグ」という
         // ユーザーフレンドリーなエラーメッセージを表示できる。
-        val isoDep = IsoDep.get(tag) ?: run {
+        IsoDep.get(tag) ?: run {
             statusTextView.text = "エラー: このNFCタグはパスポート(ISO14443-4)ではありません"
             statusTextView.setTextColor(Color.RED)
             isReadyToScan = false

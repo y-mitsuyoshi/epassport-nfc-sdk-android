@@ -156,6 +156,7 @@ class IcaoDataGroupReaderTest {
         // sequenceLength = 502
         assertEquals(502, result.size)
         // SELECT + initial read + ceil(502/255)=2 short reads = 4 calls
+        assertEquals(4, transceiveCount)
     }
 
     @Test(expected = com.example.epassport.domain.exception.InvalidDataException::class)
