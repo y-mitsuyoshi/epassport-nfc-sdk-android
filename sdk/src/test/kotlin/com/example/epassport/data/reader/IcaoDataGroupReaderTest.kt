@@ -28,9 +28,9 @@ class IcaoDataGroupReaderTest {
                     } else {
                         cmd[4].toInt() and 0xFF
                     }
-                    if (offset == 0 && le == 4) {
-                        // Initial 4-byte header: tag=0x61, len=10
-                        byteArrayOf(0x61, 0x0A, 0x00, 0x00, 0x90.toByte(), 0x00.toByte())
+                    if (offset == 0 && le == 8) {
+                        // Initial 8-byte header: tag=0x61, len=10, padding
+                        byteArrayOf(0x61, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90.toByte(), 0x00.toByte())
                     } else {
                         // Return requested amount of dummy data + SW
                         ByteArray(le) { 0xAA.toByte() } + byteArrayOf(0x90.toByte(), 0x00.toByte())
@@ -67,12 +67,11 @@ class IcaoDataGroupReaderTest {
                     } else {
                         cmd[4].toInt() and 0xFF
                     }
-                    if (offset == 0 && le == 4) {
+                    if (offset == 0 && le == 8) {
                         // tag=0x61, 3-byte length encoding: len=65536
-                        // headerBytes must be at least 5 bytes (1 tag + 4 length bytes)
-                        // response = 5 header bytes + SW
+                        // headerBytes: 1 tag + 4 length bytes + 3 padding = 8 bytes
                         byteArrayOf(
-                            0x61, 0x83.toByte(), 0x01, 0x00, 0x00,
+                            0x61, 0x83.toByte(), 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
                             0x90.toByte(), 0x00.toByte()
                         )
                     } else {
@@ -105,10 +104,10 @@ class IcaoDataGroupReaderTest {
                 0xB0 -> {
                     val offset = ((cmd[2].toInt() and 0xFF) shl 8) or (cmd[3].toInt() and 0xFF)
                     val le = cmd[4].toInt() and 0xFF
-                    if (offset == 0 && le == 4) {
-                        // tag=0x61, 2-byte length: len=0x808E=32894
+                    if (offset == 0 && le == 8) {
+                        // tag=0x61, 2-byte length: len=0x808E=32894, padded to 8 bytes
                         byteArrayOf(
-                            0x61, 0x82.toByte(), 0x80.toByte(), 0x8E.toByte(),
+                            0x61, 0x82.toByte(), 0x80.toByte(), 0x8E.toByte(), 0x00, 0x00, 0x00, 0x00,
                             0x90.toByte(), 0x00.toByte()
                         )
                     } else {
@@ -139,9 +138,9 @@ class IcaoDataGroupReaderTest {
                 0xB0 -> {
                     val offset = ((cmd[2].toInt() and 0xFF) shl 8) or (cmd[3].toInt() and 0xFF)
                     val le = cmd[4].toInt() and 0xFF
-                    if (offset == 0 && le == 4) {
-                        // tag=0x61, len=500 => sequenceLength = 1+1+500 = 502
-                        byteArrayOf(0x61, 0x01, 0xF4.toByte(), 0x00, 0x90.toByte(), 0x00.toByte())
+                    if (offset == 0 && le == 8) {
+                        // tag=0x61, len=500 => sequenceLength = 1+1+500 = 502, padded to 8 bytes
+                        byteArrayOf(0x61, 0x01, 0xF4.toByte(), 0x00, 0x00, 0x00, 0x00, 0x00, 0x90.toByte(), 0x00.toByte())
                     } else {
                         ByteArray(le) { 0xAA.toByte() } + byteArrayOf(0x90.toByte(), 0x00.toByte())
                     }

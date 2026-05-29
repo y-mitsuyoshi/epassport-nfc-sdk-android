@@ -53,6 +53,9 @@ object EPassportReader {
             ReadResult.Success(passportData)
         } catch (e: EPassportException) {
             ReadResult.Error(e)
+        } catch (e: Exception) {
+            // EPassportException 以外の予期しない例外（IOException等）もラップして返す
+            ReadResult.Error(EPassportException("Unexpected error: ${e.message}", e))
         } finally {
             try {
                 if (isoDep.isConnected) {

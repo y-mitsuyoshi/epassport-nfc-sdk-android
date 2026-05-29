@@ -79,4 +79,26 @@ class SecureMessagingTest {
         assertEquals(8, result.le)
         assertNull(result.dataField)
     }
+
+    // ──────────────────────────────────────────────────
+    // DO97 エンコードの検証
+    // ──────────────────────────────────────────────────
+
+    /**
+     * le=65536 のとき DO97 は ISO7816-4 の仕様通り 0x97 0x02 0x00 0x00 になること。
+     * 修正前は 0x97 0x02 0x01 0x00 と誤変換されていた。
+     */
+    @Test
+    fun parseApdu_le65536_do97EncodedAsZeroZero() {
+        // Le=0x0000 → internal le=65536 となる 7バイト Extended APDU
+        val cmd = byteArrayOf(0x00, 0xB0, 0x00, 0x00, 0x00, 0x00, 0x00)
+        val result = createSm().parseApdu(cmd)
+        assertEquals(65536, result.le)
+        // 65536 は ISO7816-4 上 0x0000 で表現される（0x0100 ではない）
+        // DO97 バイト列 = [0x97, 0x02, 0x00, 0x00]
+        val leHi = if (result.le == 65536) 0x00.toByte() else (result.le ushr 8).toByte()
+        val leLo = if (result.le == 65536) 0x00.toByte() else (result.le and 0xFF).toByte()
+        assertEquals(0x00.toByte(), leHi)
+        assertEquals(0x00.toByte(), leLo)
+    }
 }

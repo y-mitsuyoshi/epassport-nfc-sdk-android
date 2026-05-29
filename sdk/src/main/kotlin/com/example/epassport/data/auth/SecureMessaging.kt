@@ -67,10 +67,10 @@ class SecureMessaging(
         var do97: ByteArray? = null
         if (le >= 0) {
             do97 = if (le > 255) {
-                byteArrayOf(
-                    0x97.toByte(), 0x02.toByte(),
-                    (le ushr 8).toByte(), (le and 0xFF).toByte()
-                )
+                // ISO7816-4: Le=65536 はワイヤ上では 0x00 0x00 で表現する
+                val leHi = if (le == 65536) 0x00.toByte() else (le ushr 8).toByte()
+                val leLo = if (le == 65536) 0x00.toByte() else (le and 0xFF).toByte()
+                byteArrayOf(0x97.toByte(), 0x02.toByte(), leHi, leLo)
             } else {
                 byteArrayOf(0x97.toByte(), 0x01.toByte(), le.toByte())
             }

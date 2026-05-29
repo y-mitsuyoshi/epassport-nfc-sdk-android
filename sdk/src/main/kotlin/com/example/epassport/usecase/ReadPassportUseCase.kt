@@ -48,7 +48,9 @@ class ReadPassportUseCase(
             val secureTransceiver = try {
                 authenticator.authenticate(transceiver, bacKey)
             } finally {
-                bacKey.clear() // 鍵は認証後すぐにメモリから破棄する
+                // セキュリティ要件: 認証の成否にかかわらず、BAC 鍵は
+                // 使用直後にヒープメモリからゼロクリアする。
+                bacKey.clear()
             }
 
             // 3. Read DG1

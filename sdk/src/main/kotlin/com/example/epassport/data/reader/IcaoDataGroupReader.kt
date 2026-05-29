@@ -30,8 +30,10 @@ class IcaoDataGroupReader : DataGroupReader {
         val selectResponse = transceiver.transceive(selectCmd)
         checkStatus(selectResponse)
 
-        // 2. Read first 4 bytes to determine TLV tag and length
-        val initialReadCmd = ApduCommand.readBinary(0, 4)
+        // 2. Read first 8 bytes to determine TLV tag and length.
+        // ISO7816-4 の TLV 長フィールドは最大4バイト（0x83 + 3バイト値）になるため、
+        // タグ1バイト + 長さ最大4バイト = 計5バイトが必要。余裕を持って8バイト読む。
+        val initialReadCmd = ApduCommand.readBinary(0, 8)
         val headerResponse = transceiver.transceive(initialReadCmd)
         checkStatus(headerResponse)
         
