@@ -38,18 +38,33 @@ class SecureMessaging(
         val p1 = command[2].toInt() and 0xFF
         val p2 = command[3].toInt() and 0xFF
         // Parse Le/Lc
+        // ISO7816-4 コマンド形式:
+        //   Short APDU with Le only:  [CLA INS P1 P2 Le]           (5バイト)
+        //   Short APDU with Lc+data:  [CLA INS P1 P2 Lc data [Le]] (5+Lc[+1]バイト)
+        //   Extended APDU (Leのみ):   [CLA INS P1 P2 0x00 LeHi LeLo] (7バイト) ← readBinaryExtended がこの形式
         var lc = 0
         var le = -1
         var dataField: ByteArray? = null
 
-        if (command.size > 5) {
-            lc = command[4].toInt() and 0xFF
-            dataField = command.copyOfRange(5, 5 + lc)
-            if (command.size > 5 + lc) {
-                le = command[5 + lc].toInt() and 0xFF
+        when {
+            // Extended APDU: Lcなし、2バイトLe。command[4]=0x00 がExtendedの目印。
+            command.size == 7 && (command[4].toInt() and 0xFF) == 0x00 -> {
+                val leRaw = ((command[5].toInt() and 0xFF) shl 8) or (command[6].toInt() and 0xFF)
+                // ISO7816-4: Le=0x0000 は 65536 を意味する
+                le = if (leRaw == 0) 65536 else leRaw
             }
-        } else if (command.size == 5) {
-            le = command[4].toInt() and 0xFF
+            // Short APDU: Lc + data [+ Le]
+            command.size > 5 -> {
+                lc = command[4].toInt() and 0xFF
+                dataField = command.copyOfRange(5, 5 + lc)
+                if (command.size > 5 + lc) {
+                    le = command[5 + lc].toInt() and 0xFF
+                }
+            }
+            // Short APDU: Le のみ
+            command.size == 5 -> {
+                le = command[4].toInt() and 0xFF
+            }
         }
 
         // 1. Mask CLA
@@ -76,10 +91,17 @@ class SecureMessaging(
             System.arraycopy(do87Payload, 0, do87, 1 + lengthBytes.size, do87Payload.size)
         }
 
-        // 4. DO97 (Le)
+        // 4. DO97 (Le) - Extended APDU の場合は2バイトLeに対応
         var do97: ByteArray? = null
         if (le >= 0) {
-            do97 = byteArrayOf(0x97.toByte(), 0x01.toByte(), le.toByte())
+            do97 = if (le > 255) {
+                byteArrayOf(
+                    0x97.toByte(), 0x02.toByte(),
+                    (le ushr 8).toByte(), (le and 0xFF).toByte()
+                )
+            } else {
+                byteArrayOf(0x97.toByte(), 0x01.toByte(), le.toByte())
+            }
         }
 
         // 5. Build M for MAC

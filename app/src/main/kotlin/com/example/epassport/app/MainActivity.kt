@@ -17,6 +17,8 @@ import com.example.epassport.domain.model.MrzData
 import com.example.epassport.usecase.ReadProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.widget.LinearLayout
@@ -33,6 +35,7 @@ class MainActivity : Activity() {
     private lateinit var doeInput: EditText
     private lateinit var scanButton: Button
     private var isReadyToScan = false
+    private val activityScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,6 +111,12 @@ class MainActivity : Activity() {
         nfcAdapter?.disableForegroundDispatch(this)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        // Activityが破棄される際にコルーチンを確実にキャンセルし、メモリリークを防ぐ
+        activityScope.cancel()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action || NfcAdapter.ACTION_TAG_DISCOVERED == intent.action) {
@@ -126,6 +135,9 @@ class MainActivity : Activity() {
     }
 
     private fun processTag(tag: Tag) {
+        // EPassportReader.read() 内部でも同様に IsoDep.get(tag) を呼ぶが、
+        // ここで事前チェックすることで「ISO14443-4 非対応タグ」という
+        // ユーザーフレンドリーなエラーメッセージを表示できる。
         val isoDep = IsoDep.get(tag) ?: run {
             statusTextView.text = "エラー: このNFCタグはパスポート(ISO14443-4)ではありません"
             statusTextView.setTextColor(Color.RED)
@@ -142,7 +154,7 @@ class MainActivity : Activity() {
         statusTextView.text = "NFC Tag connected. BAC認証（鍵の生成と共有）を実行中..."
         statusTextView.setTextColor(Color.BLUE)
 
-        CoroutineScope(Dispatchers.Main).launch {
+        activityScope.launch {
             val result = EPassportReader.read(tag, mrzData) { progress ->
                 // Dispatch back to main thread for UI updates
                 launch(Dispatchers.Main) {

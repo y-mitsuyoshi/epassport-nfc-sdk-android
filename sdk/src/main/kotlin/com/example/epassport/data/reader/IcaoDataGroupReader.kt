@@ -5,6 +5,7 @@ import com.example.epassport.data.parser.Dg1Parser
 import com.example.epassport.data.parser.Dg2Parser
 import com.example.epassport.data.parser.TlvParser
 import com.example.epassport.domain.exception.ApduException
+import com.example.epassport.domain.exception.EPassportException
 import com.example.epassport.domain.model.Dg1Data
 import com.example.epassport.domain.model.Dg2Data
 import com.example.epassport.domain.port.DataGroupReader
@@ -59,7 +60,7 @@ class IcaoDataGroupReader : DataGroupReader {
 
             while (remainingData > 0) {
                 if (offset >= 32768) {
-                    throw com.example.epassport.domain.exception.EPassportException(
+                    throw EPassportException(
                         "Short APDU fallback does not support reading files larger than 32KB (offset=$offset)"
                     )
                 }
