@@ -52,4 +52,16 @@ object ApduCommand {
             0x00.toByte(), 0xB0.toByte(), p1, p2, le.toByte()
         )
     }
+
+    /** READ BINARY コマンド（拡張レングス・フォーマット） */
+    fun readBinaryExtended(offset: Int, le: Int): ByteArray {
+        val p1 = (offset ushr 8).toByte()
+        val p2 = (offset and 0xFF).toByte()
+        return byteArrayOf(
+            0x00.toByte(), 0xB0.toByte(), p1, p2,
+            0x00.toByte(),
+            (le ushr 8).toByte(),
+            (le and 0xFF).toByte()
+        )
+    }
 }

@@ -11,11 +11,9 @@ import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
-import com.example.epassport.data.auth.BacAuthenticator
+import com.example.epassport.api.EPassportReader
+import com.example.epassport.api.ReadResult
 import com.example.epassport.domain.model.MrzData
-import com.example.epassport.domain.port.DataGroupReader
-import com.example.epassport.domain.port.NfcTransceiver
-import com.example.epassport.usecase.ReadPassportUseCase
 import com.example.epassport.usecase.ReadProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -141,39 +139,33 @@ class MainActivity : Activity() {
         val doe = doeInput.text.toString().trim()
         val mrzData = MrzData(docNo, dob, doe)
 
-        // Use our NFC Transceiver wrapper
-        val transceiver = AndroidNfcTransceiver(isoDep)
-
-        // Use the newly created stub AppDataGroupReader
-        val authenticator = BacAuthenticator()
-        val reader = AppDataGroupReader()
-        val useCase = ReadPassportUseCase(authenticator, reader)
-
         statusTextView.text = "NFC Tag connected. BAC認証（鍵の生成と共有）を実行中..."
         statusTextView.setTextColor(Color.BLUE)
 
         CoroutineScope(Dispatchers.Main).launch {
-            try {
-                // Execute on IO thread background inside UseCase
-                val passportData = withContext(Dispatchers.IO) {
-                    useCase.execute(transceiver, mrzData) { progress ->
-                        // Dispatch back to main thread for UI updates
-                        launch(Dispatchers.Main) {
-                            statusTextView.text = "Progress: $progress"
-                        }
-                    }
+            val result = EPassportReader.read(tag, mrzData) { progress ->
+                // Dispatch back to main thread for UI updates
+                launch(Dispatchers.Main) {
+                    statusTextView.text = "Progress: $progress"
                 }
-                val mrzText = passportData.dg1.documentNumber
-                val imgType = passportData.dg2?.mimeType ?: "No Image"
-                statusTextView.text = "✅ 読み取り成功！ ICチップからデータを取得しました。\nMRZ: $mrzText\nImage Type: $imgType"
-                statusTextView.setTextColor(Color.GREEN)
-                isReadyToScan = false // Reset
-            } catch (e: Exception) {
-                statusTextView.text = "❌ エラー発生: ${e.message}\n(途中でパスポートが離れたか、入力した文字が間違っている可能性があります)"
-                statusTextView.setTextColor(Color.RED)
-                e.printStackTrace()
-                isReadyToScan = false // Reset
             }
+
+            when (result) {
+                is ReadResult.Success -> {
+                    val passportData = result.data
+                    val mrzText = passportData.dg1.documentNumber
+                    val imgType = passportData.dg2?.mimeType ?: "No Image"
+                    statusTextView.text = "✅ 読み取り成功！ ICチップからデータを取得しました。\nMRZ: $mrzText\nImage Type: $imgType"
+                    statusTextView.setTextColor(Color.GREEN)
+                }
+                is ReadResult.Error -> {
+                    val e = result.exception
+                    statusTextView.text = "❌ エラー発生: ${e.message}\n(途中でパスポートが離れたか、入力した文字が間違っている可能性があります)"
+                    statusTextView.setTextColor(Color.RED)
+                    e.printStackTrace()
+                }
+            }
+            isReadyToScan = false // Reset
         }
     }
 }

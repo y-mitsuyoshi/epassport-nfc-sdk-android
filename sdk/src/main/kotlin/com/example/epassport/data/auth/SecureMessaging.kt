@@ -23,6 +23,8 @@ class SecureMessaging(
         get() = delegate.timeout
         set(value) { delegate.timeout = value }
 
+    override val isExtendedLengthSupported: Boolean get() = delegate.isExtendedLengthSupported
+
     override suspend fun selectApp() {
         // eMRTD Applet 選択済み状態のため通常は不要だが委譲する
         delegate.selectApp()

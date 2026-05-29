@@ -16,4 +16,7 @@ interface NfcTransceiver {
 
     /** タイムアウト (ms) の設定 */
     var timeout: Int
+
+    /** Extended Length APDU (拡張レングス) をサポートしているか */
+    val isExtendedLengthSupported: Boolean
 }

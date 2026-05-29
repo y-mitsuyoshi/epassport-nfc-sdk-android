@@ -20,6 +20,9 @@ class IsoDepTransceiver(private val isoDep: IsoDep) : NfcTransceiver {
         get() = isoDep.timeout
         set(value) { isoDep.timeout = value }
 
+    override val isExtendedLengthSupported: Boolean
+        get() = isoDep.isExtendedLengthApduSupported
+
     override suspend fun selectApp() {
         val response = transceive(ApduCommand.selectApplet())
         checkStatusWord(response)

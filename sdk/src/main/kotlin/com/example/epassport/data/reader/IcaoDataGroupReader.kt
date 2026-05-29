@@ -43,22 +43,37 @@ class IcaoDataGroupReader : DataGroupReader {
         
         val outputStream = ByteArrayOutputStream()
         
-        // chunk reading
         var offset = 0
         var remainingData = sequenceLength
-        val maxLe = 255 // extended Le might fail on some passports, sticking to short LE in BAC
-
-        while (remainingData > 0) {
-            val le = if (remainingData > maxLe) maxLe else remainingData
-            val readCmd = ApduCommand.readBinary(offset, le)
+        
+        if (transceiver.isExtendedLengthSupported) {
+            // 一括読み出し（Extended APDUを使用）
+            val readCmd = ApduCommand.readBinaryExtended(offset, remainingData)
             val response = transceiver.transceive(readCmd)
             checkStatus(response)
-
             val data = response.copyOfRange(0, response.size - 2)
             outputStream.write(data)
+        } else {
+            // chunk reading (下位互換用：従来通り255バイトずつ細切れに読み出す)
+            val maxLe = 255 // extended Le might fail on some passports, sticking to short LE in BAC
 
-            offset += data.size // Update offset by actual read data size
-            remainingData -= data.size
+            while (remainingData > 0) {
+                if (offset >= 32768) {
+                    throw com.example.epassport.domain.exception.EPassportException(
+                        "Short APDU fallback does not support reading files larger than 32KB (offset=$offset)"
+                    )
+                }
+                val le = if (remainingData > maxLe) maxLe else remainingData
+                val readCmd = ApduCommand.readBinary(offset, le)
+                val response = transceiver.transceive(readCmd)
+                checkStatus(response)
+
+                val data = response.copyOfRange(0, response.size - 2)
+                outputStream.write(data)
+
+                offset += data.size // Update offset by actual read data size
+                remainingData -= data.size
+            }
         }
 
         return outputStream.toByteArray()
