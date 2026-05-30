@@ -82,7 +82,7 @@ class CameraMrzScanner(
                     .build()
 
                 imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                    processImageWithAiOcr(imageProxy, onSuccess)
+                    processImageWithAiOcr(imageProxy, onSuccess, onFailure)
                 }
 
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -112,7 +112,8 @@ class CameraMrzScanner(
     @SuppressLint("UnsafeOptInUsageError")
     private fun processImageWithAiOcr(
         imageProxy: ImageProxy,
-        onSuccess: (mrzRawText: String) -> Unit
+        onSuccess: (mrzRawText: String) -> Unit,
+        onFailure: (exception: Exception) -> Unit
     ) {
         // ユーザーがシャッター（撮影ボタン）を押していなければ無視する
         if (!captureRequested.compareAndSet(true, false)) {
@@ -132,6 +133,7 @@ class CameraMrzScanner(
         } catch (e: Exception) {
             Log.w("CameraMrzScanner", "Image conversion failed: ${e.message}")
             imageProxy.close()
+            onFailure(e)
             return
         }
         imageProxy.close()
@@ -142,19 +144,25 @@ class CameraMrzScanner(
                 when (val result = aiOcrClient.recognize(jpegBytes)) {
                     is AiOcrResult.Success -> {
                         val mrz = extractMrzFromAiText(result.rawText)
-                        if (mrz != null && hasDetected.compareAndSet(false, true)) {
-                            withContext(Dispatchers.Main) {
-                                stopScan()
-                                onSuccess(mrz)
+                        if (mrz != null) {
+                            if (hasDetected.compareAndSet(false, true)) {
+                                withContext(Dispatchers.Main) {
+                                    stopScan()
+                                    onSuccess(mrz)
+                                }
                             }
+                        } else {
+                            onFailure(RuntimeException("MRZ未検出: 画像からパスポートの機械読取領域を検出できませんでした。もう一度ピントを合わせて撮影してください。"))
                         }
                     }
                     is AiOcrResult.Failure -> {
                         Log.w("CameraMrzScanner", "AI OCR failed: ${result.error.message}")
+                        onFailure(RuntimeException(result.error.message))
                     }
                 }
             } catch (e: Exception) {
                 Log.w("CameraMrzScanner", "AI OCR exception: ${e.message}")
+                onFailure(e)
             }
         }
     }
