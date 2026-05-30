@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        sdk-ocr ライブラリの AndroidManifest。
+        namespace は build.gradle.kts の namespace = "com.example.epassport.ocr" で定義済み。
+        AGP 7.3+ では manifest の package 属性は非推奨のため記載しない。
+    -->
+</manifest>

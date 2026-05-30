@@ -149,12 +149,12 @@ Clean Architecture に基づいた堅牢な設計を採用しています。
 
 ### ビルド
 ```bash
-./gradlew :sdk:assembleRelease
+./gradlew :sdk-nfc:assembleRelease :sdk-ocr:assembleRelease :app:assembleRelease
 ```
 
 ### テストの実行
 ```bash
-./gradlew :sdk:test
+./gradlew :sdk-nfc:testDebugUnitTest :sdk-ocr:testDebugUnitTest :app:testDebugUnitTest
 ```
 ユニットテストは `sdk/src/test/kotlin` にあり、認証フローや TLV パースのロジックをカバーしています。
 

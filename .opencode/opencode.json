@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": [".claude/skills"]
+  },
+  "command": {
+    "verify": {
+      "description": "Run Gradle compile, test, and lint for quality check",
+      "template": "Run `./gradlew :sdk-nfc:compileReleaseKotlin :sdk-nfc:testDebugUnitTest :sdk-nfc:lint` and report the results. If the module name is different, adjust accordingly."
+    }
+  }
+}

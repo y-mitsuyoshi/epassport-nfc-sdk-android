@@ -1,0 +1,327 @@
+package com.example.epassport.data.auth
+
+import com.example.epassport.domain.exception.ApduException
+import com.example.epassport.domain.exception.AuthenticationException
+import com.example.epassport.domain.port.NfcTransceiver
+import com.example.epassport.util.CryptoUtils
+import java.io.ByteArrayOutputStream
+import java.math.BigInteger
+import java.security.MessageDigest
+
+/**
+ * 送信 APDU を暗号化し MAC を付加、受信 APDU の MAC を検証して復号するデコレータ。
+ */
+class SecureMessaging(
+    private val delegate: NfcTransceiver,
+    private val ksEnc: ByteArray,
+    private val ksMac: ByteArray,
+    ssc: ByteArray
+) : NfcTransceiver, java.io.Closeable {
+
+    private val ssc: ByteArray = ssc.copyOf()
+
+    /**
+     * NFC セッション終了時にセッション鍵をゼロクリアする。
+     * [ReadPassportUseCase] の finally ブロックから必ず呼び出すこと。
+     */
+    override fun close() {
+        ksEnc.fill(0)
+        ksMac.fill(0)
+        ssc.fill(0)
+    }
+
+    override val isConnected: Boolean get() = delegate.isConnected
+    override var timeout: Int
+        get() = delegate.timeout
+        set(value) { delegate.timeout = value }
+
+    override val isExtendedLengthSupported: Boolean get() = delegate.isExtendedLengthSupported
+
+    override suspend fun selectApp() {
+        // eMRTD Applet 選択済み状態のため通常は不要だが委譲する
+        delegate.selectApp()
+    }
+
+    override suspend fun transceive(command: ByteArray): ByteArray {
+        incrementSsc()
+
+        val cla = command[0].toInt() and 0xFF
+        val ins = command[1].toInt() and 0xFF
+        val p1 = command[2].toInt() and 0xFF
+        val p2 = command[3].toInt() and 0xFF
+        val (lc, le, dataField) = parseApdu(command)
+
+        // 1. Mask CLA
+        val maskedCla = (cla or 0x0C).toByte()
+
+        // 2. Pad command header
+        val header = byteArrayOf(maskedCla, ins.toByte(), p1.toByte(), p2.toByte())
+        val paddedHeader = CryptoUtils.pad(header)
+
+        // 3. DO87 (Data encryption)
+        var do87: ByteArray? = null
+        if (dataField != null && lc > 0) {
+            val paddedData = CryptoUtils.pad(dataField)
+            val encryptedData = CryptoUtils.encrypt3DesCbc(ksEnc, paddedData)
+            
+            val do87Payload = ByteArray(1 + encryptedData.size)
+            do87Payload[0] = 0x01
+            System.arraycopy(encryptedData, 0, do87Payload, 1, encryptedData.size)
+            
+            val lengthBytes = buildLength(do87Payload.size)
+            do87 = ByteArray(1 + lengthBytes.size + do87Payload.size)
+            do87[0] = 0x87.toByte()
+            System.arraycopy(lengthBytes, 0, do87, 1, lengthBytes.size)
+            System.arraycopy(do87Payload, 0, do87, 1 + lengthBytes.size, do87Payload.size)
+        }
+
+        // 4. DO97 (Le) - Extended APDU の場合は2バイトLeに対応
+        var do97: ByteArray? = null
+        if (le >= 0) {
+            do97 = if (le > 255) {
+                // ISO7816-4: Le=65536 はワイヤ上では 0x00 0x00 で表現する
+                val leHi = if (le == 65536) 0x00.toByte() else (le ushr 8).toByte()
+                val leLo = if (le == 65536) 0x00.toByte() else (le and 0xFF).toByte()
+                byteArrayOf(0x97.toByte(), 0x02.toByte(), leHi, leLo)
+            } else {
+                byteArrayOf(0x97.toByte(), 0x01.toByte(), le.toByte())
+            }
+        }
+
+        // 5. Build M for MAC
+        val macStream = ByteArrayOutputStream()
+        macStream.write(ssc)
+        macStream.write(paddedHeader)
+        if (do87 != null) macStream.write(do87)
+        if (do97 != null) macStream.write(do97)
+
+        val macData = CryptoUtils.pad(macStream.toByteArray())
+        val mac = CryptoUtils.calculateMac(ksMac, macData)
+
+        // DO8E
+        val do8e = ByteArray(10)
+        do8e[0] = 0x8E.toByte()
+        do8e[1] = 0x08.toByte()
+        System.arraycopy(mac, 0, do8e, 2, 8)
+
+        // 6. Build new APDU
+        val protectedCmdStream = ByteArrayOutputStream()
+        protectedCmdStream.write(header)
+        
+        var totalLc = 0
+        if (do87 != null) totalLc += do87.size
+        if (do97 != null) totalLc += do97.size
+        totalLc += do8e.size
+        
+        // 元の Le が 255 を超えているか、あるいはカプセル化後のデータ長（totalLc）が 255 を超えている場合、
+        // ラッピング後のコマンドも Extended APDU フォーマットにする
+        val isExtendedSM = le > 255 || totalLc > 255
+
+        if (isExtendedSM) {
+            // Extended Lc: 0x00 + 2バイトの長さ情報
+            protectedCmdStream.write(0x00)
+            protectedCmdStream.write(((totalLc ushr 8) and 0xFF).toByte().toInt())
+            protectedCmdStream.write((totalLc and 0xFF).toByte().toInt())
+        } else {
+            // Short Lc: 1バイトの長さ情報
+            protectedCmdStream.write(totalLc)
+        }
+
+        if (do87 != null) protectedCmdStream.write(do87)
+        if (do97 != null) protectedCmdStream.write(do97)
+        protectedCmdStream.write(do8e)
+
+        // 最後の Le の書き込み
+        if (isExtendedSM) {
+            // Extended Le: 2バイトの 0x00 0x00 を付与
+            protectedCmdStream.write(0x00)
+            protectedCmdStream.write(0x00)
+        } else {
+            // Short Le: 1バイトの 0x00 を付与
+            protectedCmdStream.write(0x00)
+        }
+
+        // 7. Transceive
+        val response = delegate.transceive(protectedCmdStream.toByteArray())
+
+        // 8. Verify and Unpack Response
+        incrementSsc()
+
+        if (response.size < 2) {
+            throw ApduException(0, 0, "Invalid SM response length")
+        }
+
+        val sw1 = response[response.size - 2].toInt() and 0xFF
+        val sw2 = response[response.size - 1].toInt() and 0xFF
+        
+        // SM error handling usually returns SW without SM data if error occurs
+        if (response.size == 2 && (sw1 != 0x90 || sw2 != 0x00)) {
+            throw ApduException(sw1, sw2, "APDU Error SW1=$sw1, SW2=$sw2")
+        }
+
+        return unwrapResponse(response)
+    }
+
+    private fun unwrapResponse(response: ByteArray): ByteArray {
+        // Strip 2 bytes SW at the end
+        val data = response.copyOfRange(0, response.size - 2)
+        val sw1 = response[response.size - 2]
+        val sw2 = response[response.size - 1]
+
+        // Parse DO contents: 87(encrypted), 99(SW), 8E(MAC)
+        var offset = 0
+        var do87Value: ByteArray? = null
+        var do99Value: ByteArray? = null
+        var do8eValue: ByteArray? = null
+
+        while (offset < data.size) {
+            val tag = data[offset].toInt() and 0xFF
+            offset++
+            val (len, lenBytes) = parseLength(data, offset)
+            offset += lenBytes
+            
+            if (offset + len > data.size) {
+                throw AuthenticationException("SM response data truncated or invalid length")
+            }
+            val value = data.copyOfRange(offset, offset + len)
+            offset += len
+
+            when (tag) {
+                0x87 -> do87Value = value
+                0x99 -> do99Value = value
+                0x8E -> do8eValue = value
+            }
+        }
+
+        if (do8eValue == null || do99Value == null) {
+            throw AuthenticationException("Invalid SM response structure: missing DO8E or DO99")
+        }
+
+        // Verify MAC
+        val macStream = ByteArrayOutputStream()
+        macStream.write(ssc)
+        // Ensure to include DO87 including its tag and length if present
+        if (do87Value != null) {
+            // MAC 入力値は「受信した DO87 TLV オブジェクト全体」である必要がある。
+            // 不屦1バイト（PI）を注意: do87Value は課题時履歴の値フィールド（PIを含む）を全体保持する。
+            // 歌詞解析ロジックが PI を削って保持するように変更すると MAC 検証が必ず失敗する。
+            val do87LenInfo = buildLength(do87Value.size)
+            macStream.write(0x87)
+            macStream.write(do87LenInfo)
+            macStream.write(do87Value)
+        }
+        val do99LenInfo = buildLength(do99Value.size)
+        macStream.write(0x99)
+        macStream.write(do99LenInfo)
+        macStream.write(do99Value)
+
+        val macData = CryptoUtils.pad(macStream.toByteArray())
+        val calculatedMac = CryptoUtils.calculateMac(ksMac, macData)
+
+        // 定数時間比較でタイミングサイドチャンネルを防止する（Arrays.equals は非定数時間のため NG）
+        if (!MessageDigest.isEqual(do8eValue, calculatedMac)) {
+            throw AuthenticationException("SM Response MAC verification failed")
+        }
+
+        // DO99 SW check
+        if (do99Value[0] != sw1 || do99Value[1] != sw2) {
+            throw AuthenticationException("DO99 SW does not match Response SW")
+        }
+
+        // Decrypt DO87
+        if (do87Value != null) {
+            // First byte of DO87 value is PI (Padding Indicator, usually 01).
+            if (do87Value[0].toInt() != 0x01) {
+                throw AuthenticationException("Unsupported padding indicator ${do87Value[0]}")
+            }
+            val encrypted = do87Value.copyOfRange(1, do87Value.size)
+            val decryptedWithPad = CryptoUtils.decrypt3DesCbc(ksEnc, encrypted)
+            val decrypted = CryptoUtils.unpad(decryptedWithPad)
+            
+            // Build response: decrypted + SW1 + SW2
+            val finalRes = ByteArray(decrypted.size + 2)
+            System.arraycopy(decrypted, 0, finalRes, 0, decrypted.size)
+            finalRes[finalRes.size - 2] = sw1
+            finalRes[finalRes.size - 1] = sw2
+            return finalRes
+        }
+
+        return byteArrayOf(sw1, sw2)
+    }
+
+    internal data class ApduParseResult(val lc: Int, val le: Int, val dataField: ByteArray?)
+
+    /**
+     * 送信 APDU を解析して Lc, Le, データ部に分解する。
+     *
+     * 【制限事項】
+     * 本実装は eMRTD ReadBinary 特化型であり、Extended Le-only APDU（7バイト長）に対応しています。
+     * Extended Lc + data + Le（例: [CLA INS P1 P2 0x00 LcHi LcLo ...data... LeHi LeLo]）など、
+     * データを送信する拡張長APDUには対応していません。
+     */
+    internal fun parseApdu(command: ByteArray): ApduParseResult {
+        // ISO7816-4 コマンド形式:
+        //   Short APDU with Le only:  [CLA INS P1 P2 Le]           (5バイト)
+        //   Short APDU with Lc+data:  [CLA INS P1 P2 Lc data [Le]] (5+Lc[+1]バイト)
+        //   Extended APDU (Leのみ):   [CLA INS P1 P2 0x00 LeHi LeLo] (7バイト)
+        var lc = 0
+        var le = -1
+        var dataField: ByteArray? = null
+
+        when {
+            // Extended APDU: Lcなし、2バイトLe。command[4]=0x00 がExtendedの目印。
+            command.size == 7 && (command[4].toInt() and 0xFF) == 0x00 -> {
+                val leRaw = ((command[5].toInt() and 0xFF) shl 8) or (command[6].toInt() and 0xFF)
+                // ISO7816-4: Le=0x0000 は 65536 を意味する
+                le = if (leRaw == 0) 65536 else leRaw
+            }
+            // Short APDU: Lc + data [+ Le]
+            command.size > 5 -> {
+                lc = command[4].toInt() and 0xFF
+                dataField = command.copyOfRange(5, 5 + lc)
+                if (command.size > 5 + lc) {
+                    le = command[5 + lc].toInt() and 0xFF
+                }
+            }
+            // Short APDU: Le のみ
+            command.size == 5 -> {
+                le = command[4].toInt() and 0xFF
+            }
+        }
+        return ApduParseResult(lc, le, dataField)
+    }
+
+    private fun incrementSsc() {
+        var sscVal = BigInteger(1, ssc)
+        sscVal = sscVal.add(BigInteger.ONE)
+        val bytes = sscVal.toByteArray()
+        // bytes might have leading 0x00 for sign or be shorter than 8 bytes
+        ssc.fill(0)
+        val copyLen = minOf(bytes.size, 8)
+        val offset = bytes.size - copyLen
+        System.arraycopy(bytes, offset, ssc, 8 - copyLen, copyLen)
+    }
+
+    private fun parseLength(data: ByteArray, offset: Int): Pair<Int, Int> {
+        val firstByte = data[offset].toInt() and 0xFF
+        if (firstByte <= 0x7F) {
+            return Pair(firstByte, 1)
+        } else if (firstByte == 0x81) {
+            return Pair(data[offset + 1].toInt() and 0xFF, 2)
+        } else if (firstByte == 0x82) {
+            val len = ((data[offset + 1].toInt() and 0xFF) shl 8) or (data[offset + 2].toInt() and 0xFF)
+            return Pair(len, 3)
+        }
+        throw IllegalArgumentException("Unsupported length encoding")
+    }
+
+    private fun buildLength(length: Int): ByteArray {
+        if (length <= 0x7F) {
+            return byteArrayOf(length.toByte())
+        } else if (length <= 0xFF) {
+            return byteArrayOf(0x81.toByte(), length.toByte())
+        } else {
+            return byteArrayOf(0x82.toByte(), (length ushr 8).toByte(), (length and 0xFF).toByte())
+        }
+    }
+}
