@@ -29,14 +29,12 @@ class IsoDepTransceiver(private val isoDep: IsoDep) : NfcTransceiver {
     }
 
     override suspend fun transceive(command: ByteArray): ByteArray = withContext(Dispatchers.IO) {
+        // 接続残名の場合は即座に例外を投げる。
+        // 自動再接続は別のチップに誤って接続するリスクがあるため筌止。
         if (!isoDep.isConnected) {
-            try {
-                isoDep.connect()
-            } catch (e: Exception) {
-                throw NfcTagLostException(e)
-            }
+            throw NfcTagLostException(IllegalStateException("NFC tag is not connected"))
         }
-        
+
         try {
             val response = isoDep.transceive(command)
             if (response == null || response.size < 2) {
@@ -44,6 +42,9 @@ class IsoDepTransceiver(private val isoDep: IsoDep) : NfcTransceiver {
             }
             response
         } catch (e: TagLostException) {
+            throw NfcTagLostException(e)
+        } catch (e: java.io.IOException) {
+            // TagLostException 以外の NFC I/O 障害（例: RF 消断）も NfcTagLostException として抱届する
             throw NfcTagLostException(e)
         }
     }

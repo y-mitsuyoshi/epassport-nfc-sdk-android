@@ -1,7 +1,6 @@
 package com.example.epassport.app
 
 import android.Manifest
-import android.app.Activity
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -23,10 +22,9 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.ComponentActivity
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
 import com.example.epassport.api.EPassportReader
 import com.example.epassport.api.ReadResult
 import com.example.epassport.domain.model.MrzData
@@ -39,10 +37,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-class MainActivity : Activity(), LifecycleOwner {
-
-    private val lifecycleRegistry = LifecycleRegistry(this)
-    override val lifecycle: Lifecycle get() = lifecycleRegistry
+class MainActivity : ComponentActivity() {
 
     private var nfcAdapter: NfcAdapter? = null
     private lateinit var statusTextView: TextView
@@ -76,7 +71,6 @@ class MainActivity : Activity(), LifecycleOwner {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         mrzScanner = CameraMrzScanner(this, this)
@@ -466,35 +460,40 @@ class MainActivity : Activity(), LifecycleOwner {
 
     override fun onStart() {
         super.onStart()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
     }
 
     override fun onResume() {
         super.onResume()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         val intent = Intent(this, javaClass).apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE)
+        // FLAG_IMMUTABLE: NFC foreground dispatch はインテントの変更が不要なため、
+        // FLAG_MUTABLE を使う必要はない（外部アプリによるインテント改ざんを防止）。
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
     }
 
     override fun onPause() {
         super.onPause()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         nfcAdapter?.disableForegroundDispatch(this)
     }
 
     override fun onStop() {
         super.onStop()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-        mrzScanner?.stopScan()
+        // CameraX は lifecycleOwner にバインドされているため、
+        // ON_STOP イベントで自動的にカメラを届ける。
+        // ここで stopScan() を呼ぶと unbindAll() され、バックグラウンドから戻った際に
+        // カメラが再開されなくなるため呼び出してはならない。
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         activityScope.cancel()
+        // TextRecognizer のネイティブリソースを解放する（メモリリーク防止）
+        mrzScanner?.release()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -539,7 +538,7 @@ class MainActivity : Activity(), LifecycleOwner {
             when (result) {
                 is ReadResult.Success -> {
                     showStatus("🎉 読み込み成功！ICデータを取得しました。", Color.parseColor("#059669"), Color.parseColor("#D1FAE5"))
-                    val passportData = result.passportData
+                    val passportData = result.data
                     
                     // Render Image if available
                     val dg2 = passportData.dg2

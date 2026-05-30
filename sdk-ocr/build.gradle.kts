@@ -10,6 +10,7 @@ android {
     defaultConfig {
         minSdk = 24
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -34,12 +35,11 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
 
-    // CameraX dependencies for camera stream capture
-    val cameraVersion = "1.3.1"
-    implementation("androidx.camera:camera-camera2:$cameraVersion")
-    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
-    implementation("androidx.camera:camera-view:$cameraVersion")
+    // CameraX (バージョンは gradle/libs.versions.toml で一元管理)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
 
-    // Google ML Kit Text Recognition (On-device GMS model)
-    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
+    // Google ML Kit Text Recognition (オンデバイス: クラウド送信なし)
+    implementation(libs.mlkit.text.recognition)
 }

@@ -6,7 +6,7 @@ import com.example.epassport.domain.port.NfcTransceiver
 import com.example.epassport.util.CryptoUtils
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
-import java.util.Arrays
+import java.security.MessageDigest
 
 /**
  * 送信 APDU を暗号化し MAC を付加、受信 APDU の MAC を検証して復号するデコレータ。
@@ -16,9 +16,19 @@ class SecureMessaging(
     private val ksEnc: ByteArray,
     private val ksMac: ByteArray,
     ssc: ByteArray
-) : NfcTransceiver {
+) : NfcTransceiver, java.io.Closeable {
 
     private val ssc: ByteArray = ssc.copyOf()
+
+    /**
+     * NFC セッション終了時にセッション鍵をゼロクリアする。
+     * [ReadPassportUseCase] の finally ブロックから必ず呼び出すこと。
+     */
+    override fun close() {
+        ksEnc.fill(0)
+        ksMac.fill(0)
+        ssc.fill(0)
+    }
 
     override val isConnected: Boolean get() = delegate.isConnected
     override var timeout: Int
@@ -192,6 +202,9 @@ class SecureMessaging(
         macStream.write(ssc)
         // Ensure to include DO87 including its tag and length if present
         if (do87Value != null) {
+            // MAC 入力値は「受信した DO87 TLV オブジェクト全体」である必要がある。
+            // 不屦1バイト（PI）を注意: do87Value は課题時履歴の値フィールド（PIを含む）を全体保持する。
+            // 歌詞解析ロジックが PI を削って保持するように変更すると MAC 検証が必ず失敗する。
             val do87LenInfo = buildLength(do87Value.size)
             macStream.write(0x87)
             macStream.write(do87LenInfo)
@@ -205,7 +218,8 @@ class SecureMessaging(
         val macData = CryptoUtils.pad(macStream.toByteArray())
         val calculatedMac = CryptoUtils.calculateMac(ksMac, macData)
 
-        if (!Arrays.equals(do8eValue, calculatedMac)) {
+        // 定数時間比較でタイミングサイドチャンネルを防止する（Arrays.equals は非定数時間のため NG）
+        if (!MessageDigest.isEqual(do8eValue, calculatedMac)) {
             throw AuthenticationException("SM Response MAC verification failed")
         }
 

@@ -8,7 +8,6 @@ import com.example.epassport.domain.port.PassportAuthenticator
 import com.example.epassport.util.CryptoUtils
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.util.Arrays
 
 class BacAuthenticator : PassportAuthenticator {
 
@@ -55,9 +54,9 @@ class BacAuthenticator : PassportAuthenticator {
         val eR = responseData.copyOfRange(0, 32)
         val macR = responseData.copyOfRange(32, 40)
 
-        // 6. Verify MAC of Response
+        // 6. Verify MAC of Response (定数時間比較でタイミングサイドチャンネルを防止)
         val expectedMacR = CryptoUtils.calculateMac(bacKey.macKey, CryptoUtils.pad(eR))
-        if (!Arrays.equals(macR, expectedMacR)) {
+        if (!MessageDigest.isEqual(macR, expectedMacR)) {
             throw AuthenticationException("MAC verification failed for EXTERNAL AUTHENTICATE response")
         }
 
@@ -67,7 +66,8 @@ class BacAuthenticator : PassportAuthenticator {
         val rndIfdResp = r.copyOfRange(8, 16)
         val kIc = r.copyOfRange(16, 32)
 
-        if (!Arrays.equals(rndIc, rndIcResp) || !Arrays.equals(rndIfd, rndIfdResp)) {
+        // 定数時間比較で RND 一致検証（Arrays.equals は非定数時間のため NG）
+        if (!MessageDigest.isEqual(rndIc, rndIcResp) || !MessageDigest.isEqual(rndIfd, rndIfdResp)) {
             throw AuthenticationException("RND.IC or RND.IFD mismatch in authentication response")
         }
 
@@ -84,6 +84,12 @@ class BacAuthenticator : PassportAuthenticator {
         val ssc = ByteArray(8)
         System.arraycopy(rndIc, 4, ssc, 0, 4)
         System.arraycopy(rndIfd, 4, ssc, 4, 4)
+
+        // セキュリティ要件: セッション鍵導出後に中間データをゲールフィールドでゼロクリアする。
+        // ksEnc/ksMac は SecureMessaging が保持するため、ここではゼロクリアしない。
+        kSeed.fill(0)
+        rndIfd.fill(0); kIfd.fill(0); kIc.fill(0)
+        s.fill(0); eS.fill(0); r.fill(0)
 
         return SecureMessaging(transceiver, ksEnc, ksMac, ssc)
     }

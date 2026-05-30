@@ -21,6 +21,8 @@ object ApduCommand {
 
     /** MUTUAL AUTHENTICATE コマンド (EXTERNAL AUTHENTICATE) */
     fun mutualAuthenticate(authData: ByteArray): ByteArray {
+        // Short APDU の Lc は 1 バイトのため最大 255 バイト。BAC では常に 40 バイトなので問題ない。
+        require(authData.size <= 255) { "authData が Short APDU の Lc 上限 (255 bytes) を超えています" }
         val apdu = ByteArray(5 + authData.size + 1)
         apdu[0] = 0x00.toByte()
         apdu[1] = 0x82.toByte()

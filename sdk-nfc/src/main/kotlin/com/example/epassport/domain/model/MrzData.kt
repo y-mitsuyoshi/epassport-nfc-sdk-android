@@ -25,7 +25,8 @@ data class MrzData(
     /** BAC 用の K_seed を導出 (SHA-1 の先頭16バイト) */
     fun deriveBacKeySeed(): ByteArray {
         val mrzInfo = mrzInformation
-        System.err.println("MRZ Info: '$mrzInfo'")
+        // NOTE: mrzInfo はパスポート番号・生年月日・有効期限を含む機密情報であるため、
+        // いかなるビルド構成でもログ出力してはならない。
 
         val digest = MessageDigest.getInstance("SHA-1")
         digest.update(mrzInfo.toByteArray(Charsets.UTF_8))
@@ -82,7 +83,10 @@ data class MrzData(
     }
 
     private fun padString(input: String, length: Int): String {
-        return input.padEnd(length, '<').substring(0, length)
+        require(input.length <= length) {
+            "MRZ field '${input}' (長さ ${input.length}) が許容最大長 $length を超えています"
+        }
+        return input.padEnd(length, '<')
     }
 
 }
