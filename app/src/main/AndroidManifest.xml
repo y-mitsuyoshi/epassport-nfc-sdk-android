@@ -33,5 +33,10 @@
                 android:name="android.nfc.action.TECH_DISCOVERED"
                 android:resource="@xml/nfc_tech_filter" />
         </activity>
+
+        <!-- Google Play Services にアプリインストール時/起動時に OCR モデルの自動事前ダウンロードを指示 -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr" />
     </application>
 </manifest>
