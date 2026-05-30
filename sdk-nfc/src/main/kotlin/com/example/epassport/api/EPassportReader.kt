@@ -47,6 +47,7 @@ object EPassportReader {
         val useCase = ReadPassportUseCase(authenticator, reader)
  
         return@withContext try {
+            isoDep.connect()
             val passportData = useCase.execute(
                 transceiver = transceiver,
                 mrzData = mrzData,
