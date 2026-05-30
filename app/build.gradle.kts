@@ -49,6 +49,10 @@ android {
     }
 }
 
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-Xlint:-options")
+}
+
 dependencies {
     implementation(project(":sdk-nfc"))
     implementation(project(":sdk-ocr"))
