@@ -31,6 +31,8 @@ import com.example.epassport.domain.model.MrzData
 import com.example.epassport.usecase.ReadProgress
 import com.example.epassport.ocr.CameraMrzScanner
 import com.example.epassport.ocr.MrzParser
+import com.example.epassport.ocr.ai.AiOcrClientFactory
+import com.example.epassport.ocr.ai.AiOcrConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -73,7 +75,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
-        mrzScanner = CameraMrzScanner(this, this)
+
+        // ローカルテスト用: BuildConfig からAPIキーを取得（開発時のみ使用）
+        // 本番運用では SecureApiKeyProvider を実装し、サーバー動的配信から安全に取得すること。
+        val aiOcrConfig = AiOcrConfig.forLocalTesting(
+            vendor = "openai",
+            apiKey = BuildConfig.AI_OCR_API_KEY,
+            model = "gpt-4o-mini"
+        )
+        val aiOcrClient = AiOcrClientFactory.create(aiOcrConfig)
+        mrzScanner = CameraMrzScanner(this, this, aiOcrClient)
 
         // Set elegant dark charcoal background
         val rootScrollView = ScrollView(this).apply {
@@ -492,7 +503,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         activityScope.cancel()
-        // TextRecognizer のネイティブリソースを解放する（メモリリーク防止）
+        // CameraMrzScanner のリソースを解放（メモリリーク防止）
         mrzScanner?.release()
     }
 
