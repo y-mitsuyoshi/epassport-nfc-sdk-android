@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,12 +9,26 @@ android {
     namespace = "com.example.epassport.app"
     compileSdk = 34
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.example.epassport.app"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        // local.properties の AI_OCR_API_KEY を BuildConfig に注入
+        // 存在しない場合は空文字列でビルド（実行時にエラーになるため注意）
+        val localProps = rootProject.file("local.properties").let { file ->
+            if (file.exists()) Properties().apply { load(file.inputStream()) } else Properties()
+        }
+        val aiOcrApiKey = localProps.getProperty("AI_OCR_API_KEY", "")
+        val aiOcrModel = localProps.getProperty("AI_OCR_MODEL", "gemini-1.5-flash")
+        buildConfigField("String", "AI_OCR_API_KEY", "\"$aiOcrApiKey\"")
+        buildConfigField("String", "AI_OCR_MODEL", "\"$aiOcrModel\"")
     }
 
     buildTypes {
@@ -31,6 +47,10 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+}
+
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-Xlint:-options")
 }
 
 dependencies {

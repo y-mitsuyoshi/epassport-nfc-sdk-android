@@ -11,40 +11,53 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.example.epassport.ocr.ai.AiOcrClient
+import com.example.epassport.ocr.ai.AiOcrResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * CameraX と Google ML Kit を使用したオンデバイス（ローカル完結型）MRZスキャナーの実装。
+ * CameraX と クラウドAI OCR を使用したMRZスキャナーの実装。
  *
- * 修正済みの問題:
- * - cameraExecutor を stopScan() で shutdown しないことでクラッシュを防止（再スキャン対応）
- * - AtomicBoolean で onSuccess の重複呼び出しを防止（レースコンディション解消）
- * - applicationContext を使用することで Activity のメモリリークを防止
- * - release() メソッドで TextRecognizer のネイティブリソースを確実に解放
+ * ## 動作フロー
+ * 1. CameraX でカメラ映像をリアルタイムプレビュー
+ * 2. 一定間隔（デフォルト800ms）ごとにフレームをキャプチャ
+ * 3. JPEG変換後、クラウドAI OCR（OpenAI/Vertex/Bedrock等）に画像を送信
+ * 4. AIから返されたテキストを MrzExtractor で解析
+ * 5. MRZを検出できれば onSuccess を呼び出し、カメラを停止
+ *
+ * ## セキュリティ
+ * APIキーは [AiOcrConfig.apiKeyProvider] を通じて動的に取得することを推奨。
+ * BuildConfig/localProperties への直接埋め込みは避けること。
+ *
+ * @param aiOcrClient AI OCRクライアント（必須）。AiOcrClientFactory で生成する。
+ * @param captureIntervalMs フレームキャプチャ間隔（ミリ秒）。連続API呼び出しを防ぐ。
  */
 class CameraMrzScanner(
     context: Context,
-    private val lifecycleOwner: LifecycleOwner
+    private val lifecycleOwner: LifecycleOwner,
+    private val aiOcrClient: AiOcrClient,
+    private val captureIntervalMs: Long = 800L
 ) : MrzScanner {
 
-    // ApplicationContext を保持することで Activity のメモリリークを防止
     private val appContext: Context = context.applicationContext
-
-    // executor は stopScan() では shutdown しない（再スキャン可能にするため）
-    // release() でのみ shutdown する
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-
-    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
     private var cameraProvider: ProcessCameraProvider? = null
 
-    // 重複コールバック防止フラグ（複数フレームが同時に成功しないよう AtomicBoolean で保護）
     private val hasDetected = AtomicBoolean(false)
+    private val aiOcrScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val captureRequested = AtomicBoolean(false)
+
+    override fun triggerCapture() {
+        captureRequested.set(true)
+    }
 
     @SuppressLint("UnsafeOptInUsageError")
     override fun startScan(
@@ -52,7 +65,6 @@ class CameraMrzScanner(
         onSuccess: (mrzRawText: String) -> Unit,
         onFailure: (exception: Exception) -> Unit
     ) {
-        // 新しいスキャンセッション開始時に検知フラグをリセット
         hasDetected.set(false)
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(appContext)
@@ -66,14 +78,14 @@ class CameraMrzScanner(
 
                 val imageAnalysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setTargetResolution(android.util.Size(1280, 720))
                     .build()
 
                 imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                    processImage(imageProxy, onSuccess)
+                    processImageWithAiOcr(imageProxy, onSuccess, onFailure)
                 }
 
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
                 cameraProvider?.unbindAll()
                 cameraProvider?.bindToLifecycle(
                     lifecycleOwner,
@@ -81,7 +93,6 @@ class CameraMrzScanner(
                     preview,
                     imageAnalysis
                 )
-
             } catch (e: Exception) {
                 onFailure(e)
             }
@@ -89,68 +100,88 @@ class CameraMrzScanner(
     }
 
     override fun stopScan() {
-        // cameraProvider のバインドを解除するのみ。executor は shutdown しない（再利用のため）
         cameraProvider?.unbindAll()
     }
 
     override fun release() {
-        // Activity/Fragment の onDestroy() で呼び出す
-        // ここでのみ executor を終了し、TextRecognizer のネイティブリソースを解放する
         cameraProvider?.unbindAll()
         cameraExecutor.shutdown()
-        recognizer.close()
+        aiOcrScope.cancel()
     }
 
     @SuppressLint("UnsafeOptInUsageError")
-    private fun processImage(
+    private fun processImageWithAiOcr(
         imageProxy: ImageProxy,
-        onSuccess: (mrzRawText: String) -> Unit
+        onSuccess: (mrzRawText: String) -> Unit,
+        onFailure: (exception: Exception) -> Unit
     ) {
-        val mediaImage = imageProxy.image
-        if (mediaImage != null) {
-            val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-            recognizer.process(image)
-                .addOnSuccessListener { visionText ->
-                    val mrz = extractMrz(visionText)
-                    // AtomicBoolean で「最初に検知した1フレームのみ」処理する（重複防止）
-                    if (mrz != null && hasDetected.compareAndSet(false, true)) {
-                        stopScan()
-                        onSuccess(mrz)
+        // ユーザーがシャッター（撮影ボタン）を押していなければ無視する
+        if (!captureRequested.compareAndSet(true, false)) {
+            imageProxy.close()
+            return
+        }
+
+        // 既に検出済みなら無視
+        if (hasDetected.get()) {
+            imageProxy.close()
+            return
+        }
+
+        // ImageProxy → JPEG変換（close前にByteArrayをコピー）
+        val jpegBytes = try {
+            ImageProxyUtils.toJpegByteArray(imageProxy)
+        } catch (e: Exception) {
+            Log.w("CameraMrzScanner", "Image conversion failed: ${e.message}")
+            imageProxy.close()
+            onFailure(e)
+            return
+        }
+        imageProxy.close()
+
+        // クラウドAI OCRへ非同期送信
+        aiOcrScope.launch {
+            try {
+                when (val result = aiOcrClient.recognize(jpegBytes)) {
+                    is AiOcrResult.Success -> {
+                        val mrz = extractMrzFromAiText(result.rawText)
+                        if (mrz != null) {
+                            if (hasDetected.compareAndSet(false, true)) {
+                                withContext(Dispatchers.Main) {
+                                    stopScan()
+                                    onSuccess(mrz)
+                                }
+                            }
+                        } else {
+                            onFailure(RuntimeException("MRZ未検出: 画像からパスポートの機械読取領域を検出できませんでした。もう一度ピントを合わせて撮影してください。"))
+                        }
+                    }
+                    is AiOcrResult.Failure -> {
+                        Log.w("CameraMrzScanner", "AI OCR failed: ${result.error.message}")
+                        onFailure(RuntimeException(result.error.message))
                     }
                 }
-                .addOnFailureListener { e ->
-                    // 個別フレームの OCR エラーはスキップしてスキャンを続行する。
-                    // モデル未ダウンロード等の永続障害検知のため警告ベルブでログ出力する（PII を含まないため安全）
-                    Log.w("CameraMrzScanner", "ML Kit OCR frame error: ${e.message}")
-                }
-                .addOnCompleteListener {
-                    imageProxy.close()
-                }
-        } else {
-            imageProxy.close()
+            } catch (e: Exception) {
+                Log.w("CameraMrzScanner", "AI OCR exception: ${e.message}")
+                onFailure(e)
+            }
         }
     }
 
     /**
-     * OCRテキストブロックからパスポートMRZ（44文字の2行）を抽出する。
-     * ICAO OCR-B フォーマット: `P<` で始まる 44 文字の行が2連続で並ぶ。
+     * AI OCRから返された自由形式テキストから、MRZを抽出する。
      */
-    private fun extractMrz(visionText: Text): String? {
-        val lines = visionText.textBlocks.flatMap { it.lines }
-            .map { it.text.replace(" ", "").replace("\r", "").replace("\n", "") }
-
-        val mrzPattern = Regex("^[A-Z0-9<]{44}$")
-
-        for (i in 0 until lines.size - 1) {
-            val line1 = lines[i].uppercase()
-            val line2 = lines[i + 1].uppercase()
-
-            if (mrzPattern.matches(line1) && mrzPattern.matches(line2)) {
-                if (line1.startsWith("P<")) {
-                    return "$line1\n$line2"
-                }
+    private fun extractMrzFromAiText(rawText: String): String? {
+        val normalizedLines = rawText
+            .lines()
+            .map { line ->
+                line.trim()
+                    .replace(" ", "")
+                    .replace("\r", "")
+                    .replace(Regex("[\\(\\)\\{\\}\\[\\]«»]"), "<")
+                    .uppercase()
             }
-        }
-        return null
+            .filter { it.isNotBlank() }
+
+        return MrzExtractor.extractFromLines(normalizedLines)
     }
 }

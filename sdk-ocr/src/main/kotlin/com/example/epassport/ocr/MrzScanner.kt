@@ -34,5 +34,10 @@ interface MrzScanner {
      * Activity/Fragment の onDestroy() で必ず呼び出してください。
      */
     fun release()
+
+    /**
+     * 現在のカメラプレビューからフレームをキャプチャし、OCR解析（静止画撮影）を実行します。
+     */
+    fun triggerCapture()
 }
 

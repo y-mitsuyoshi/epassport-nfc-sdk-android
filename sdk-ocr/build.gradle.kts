@@ -34,6 +34,10 @@ android {
     }
 }
 
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-Xlint:-options")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
@@ -43,6 +47,12 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
 
-    // Google ML Kit Text Recognition (オンデバイス: クラウド送信なし)
-    implementation(libs.mlkit.text.recognition)
+    // HTTP client for AI OCR cloud APIs
+    implementation(libs.okhttp)
+    // JSON serialization for AI API payloads
+    implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.mockwebserver)
+    testImplementation(libs.mockk)
 }

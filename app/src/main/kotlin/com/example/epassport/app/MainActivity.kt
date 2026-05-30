@@ -31,6 +31,8 @@ import com.example.epassport.domain.model.MrzData
 import com.example.epassport.usecase.ReadProgress
 import com.example.epassport.ocr.CameraMrzScanner
 import com.example.epassport.ocr.MrzParser
+import com.example.epassport.ocr.ai.AiOcrClientFactory
+import com.example.epassport.ocr.ai.AiOcrConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -73,7 +75,23 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
-        mrzScanner = CameraMrzScanner(this, this)
+
+        // ローカルテスト用: BuildConfig からAPIキーとモデルを取得（開発時のみ使用）
+        // 本番運用では SecureApiKeyProvider を実装し、サーバー動的配信から安全に取得すること。
+        try {
+            val modelName = if (BuildConfig.AI_OCR_MODEL.isNotBlank()) BuildConfig.AI_OCR_MODEL else "gemini-1.5-flash"
+            val aiOcrConfig = AiOcrConfig.forLocalTesting(
+                vendor = "google_ai_studio",
+                apiKey = BuildConfig.AI_OCR_API_KEY,
+                model = modelName
+            )
+            val aiOcrClient = AiOcrClientFactory.create(aiOcrConfig)
+            mrzScanner = CameraMrzScanner(this, this, aiOcrClient)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            android.util.Log.e("MainActivity", "Failed to initialize CameraMrzScanner: ${e.message}")
+            mrzScanner = null
+        }
 
         // Set elegant dark charcoal background
         val rootScrollView = ScrollView(this).apply {
@@ -229,8 +247,9 @@ class MainActivity : ComponentActivity() {
                     scannedMrzData = MrzData(docNo, dob, doe)
                     triggerScanReady()
                 } else {
-                    // In camera mode, scanButton acts as a restart button for camera if needed
-                    startCameraOcrScan()
+                    // カメラモードの時は撮影ボタン（シャッター）として機能する
+                    showStatus("画像を送信中... AI OCRによる解析を実行しています...", Color.parseColor("#EAB308"), Color.parseColor("#FEF9C3"))
+                    mrzScanner?.triggerCapture()
                 }
             }
         }
@@ -345,6 +364,15 @@ class MainActivity : ComponentActivity() {
             scanButton.visibility = View.VISIBLE
             showStatus("MRZ情報を手動入力し、読み取りボタンを押してください", Color.parseColor("#94A3B8"), Color.parseColor("#1E293B"))
         } else {
+            if (mrzScanner == null) {
+                android.widget.Toast.makeText(
+                    this,
+                    "OCR初期化エラー: local.propertiesにAI_OCR_API_KEYを正しく設定し、再ビルドしてください。",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                switchMode(InputMode.MANUAL)
+                return
+            }
             inputCard.visibility = View.GONE
             cameraCard.visibility = View.VISIBLE
             
@@ -359,9 +387,9 @@ class MainActivity : ComponentActivity() {
                 setColor(Color.TRANSPARENT)
             }
             
-            scanButton.text = "カメラを再起動する"
-            scanButton.visibility = View.GONE
-            showStatus("カメラ起動中... パスポートのMRZ部分（最下部2行）を映してください", Color.parseColor("#EAB308"), Color.parseColor("#FEF9C3"))
+            scanButton.text = "撮影してMRZを取得する"
+            scanButton.visibility = View.VISIBLE
+            showStatus("カメラ起動中... パスポートのMRZ部分（最下部2行）を枠内に合わせて、撮影ボタンを押してください", Color.parseColor("#EAB308"), Color.parseColor("#FEF9C3"))
             
             // Request camera permission
             if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -492,7 +520,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         activityScope.cancel()
-        // TextRecognizer のネイティブリソースを解放する（メモリリーク防止）
+        // CameraMrzScanner のリソースを解放（メモリリーク防止）
         mrzScanner?.release()
     }
 
