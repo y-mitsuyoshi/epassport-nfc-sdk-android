@@ -67,4 +67,18 @@ object ApduCommand {
             (le and 0xFF).toByte()
         )
     }
+
+    /** INTERNAL AUTHENTICATE コマンド (Active Authentication用) */
+    fun internalAuthenticate(challenge: ByteArray): ByteArray {
+        val apdu = ByteArray(5 + challenge.size + 1)
+        apdu[0] = 0x00.toByte()
+        apdu[1] = 0x88.toByte()
+        apdu[2] = 0x00.toByte()
+        apdu[3] = 0x00.toByte()
+        apdu[4] = challenge.size.toByte()
+        System.arraycopy(challenge, 0, apdu, 5, challenge.size)
+        apdu[apdu.size - 1] = 0x00.toByte() // Le = 0x00 (256 bytes max response)
+        return apdu
+    }
 }
+

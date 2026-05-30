@@ -15,6 +15,7 @@ enum class ReadProgress {
     AUTHENTICATING,
     READING_DG1,
     READING_DG2,
+    PERFORMING_ACTIVE_AUTH,
     SUCCESS,
     ERROR
 }
@@ -27,13 +28,14 @@ class ReadPassportUseCase(
     private val reader: DataGroupReader
 ) {
     /**
-     * パスポートから DG1, DG2 を読み取るオーケストレーション。
+     * パスポートから DG1, DG2, および（サポートされている場合は）Active Authentication データを読み取る。
      * 呼び出し元（EPassportReader）が IO スレッド上での実行を保証するため、
      * このメソッド自体は dispatcher の切り替えを行わない。
      */
     suspend fun execute(
         transceiver: NfcTransceiver,
         mrzData: MrzData,
+        challenge: ByteArray? = null,
         onProgress: (ReadProgress) -> Unit = {}
     ): PassportData {
         try {
@@ -61,8 +63,33 @@ class ReadPassportUseCase(
             onProgress(ReadProgress.READING_DG2)
             val dg2 = reader.readDg2(secureTransceiver)
 
+            // 5. Try Active Authentication (AA) - failure here should not block success of reading
+            var aaData: com.example.epassport.domain.model.ActiveAuthenticationData? = null
+            try {
+                onProgress(ReadProgress.PERFORMING_ACTIVE_AUTH)
+                val finalChallenge = challenge ?: ByteArray(8).apply {
+                    java.security.SecureRandom().nextBytes(this)
+                }
+                
+                // Read DG15 (Public Key Info)
+                val dg15Bytes = reader.readDg15(secureTransceiver)
+                
+                // Perform INTERNAL AUTHENTICATE
+                val signature = reader.performActiveAuthentication(secureTransceiver, finalChallenge)
+                
+                aaData = com.example.epassport.domain.model.ActiveAuthenticationData(
+                    publicKeyInfo = dg15Bytes,
+                    challenge = finalChallenge,
+                    signature = signature
+                )
+            } catch (e: Exception) {
+                // Active Authentication is optional or could fail on some passports (e.g. no DG15 support).
+                // We capture and ignore the exception so that normal passport data is still returned.
+                android.util.Log.w("ReadPassportUseCase", "Active Authentication failed or not supported: ${e.message}")
+            }
+
             onProgress(ReadProgress.SUCCESS)
-            return PassportData(dg1, dg2)
+            return PassportData(dg1 = dg1, dg2 = dg2, activeAuthenticationData = aaData)
 
         } catch (e: Exception) {
             onProgress(ReadProgress.ERROR)
@@ -73,3 +100,4 @@ class ReadPassportUseCase(
         }
     }
 }
+

@@ -24,7 +24,22 @@ class IcaoDataGroupReader : DataGroupReader {
         return Dg2Parser.parse(dg2Bytes)
     }
 
+    override suspend fun readDg15(transceiver: NfcTransceiver): ByteArray {
+        return readDataGroup(transceiver, byteArrayOf(0x01, 0x0F)) // DG15 File ID
+    }
+
+    override suspend fun performActiveAuthentication(
+        transceiver: NfcTransceiver,
+        challenge: ByteArray
+    ): ByteArray {
+        val cmd = ApduCommand.internalAuthenticate(challenge)
+        val response = transceiver.transceive(cmd)
+        checkStatus(response)
+        return response.copyOfRange(0, response.size - 2) // Omit status word (SW)
+    }
+
     internal suspend fun readDataGroup(transceiver: NfcTransceiver, fileId: ByteArray): ByteArray {
+
         // 1. SELECT FILE
         val selectCmd = ApduCommand.selectFile(fileId)
         val selectResponse = transceiver.transceive(selectCmd)

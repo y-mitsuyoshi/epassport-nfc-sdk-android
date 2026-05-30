@@ -19,35 +19,38 @@ import kotlinx.coroutines.withContext
 object EPassportReader {
 
     /**
-     * MRZ 情報を用いて NFC タグからパスポートデータ (DG1, DG2) を読み取る。
+     * MRZ 情報を用いて NFC タグからパスポートデータ (DG1, DG2, および Active Authenticationデータ) を読み取る。
      *
      * @param tag Android の NFC Framework から取得した Tag オブジェクト
      * @param mrzData OCR 等で取得した MRZ (Machine Readable Zone) 情報
+     * @param challenge サーバーが発行した検証用のワンタイム乱数（null の場合はSDKが自動生成します）
      * @param onProgress 進行状況を受け取るオプションのコールバック
      * @return 読み取り結果 (Success または Error)
      */
     suspend fun read(
         tag: Tag,
         mrzData: MrzData,
+        challenge: ByteArray? = null,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult = withContext(Dispatchers.IO) {
         
         val isoDep = IsoDep.get(tag) ?: return@withContext ReadResult.Error(
             EPassportException("Tag does not support IsoDep technology")
         )
-
+ 
         val transceiver = IsoDepTransceiver(isoDep)
         // タイムアウトを長めに設定 (BAC, 画像などの大きなデータの読み込みに対応するため)
         transceiver.timeout = 10000 
-
+ 
         val authenticator = BacAuthenticator()
         val reader = IcaoDataGroupReader()
         val useCase = ReadPassportUseCase(authenticator, reader)
-
+ 
         return@withContext try {
             val passportData = useCase.execute(
                 transceiver = transceiver,
                 mrzData = mrzData,
+                challenge = challenge,
                 onProgress = { progress -> onProgress?.invoke(progress) }
             )
             ReadResult.Success(passportData)
@@ -66,4 +69,5 @@ object EPassportReader {
             }
         }
     }
+
 }
