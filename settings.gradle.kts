@@ -13,5 +13,7 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "EPassportNfcSdk"
-include(":sdk")
+include(":sdk-nfc")
+include(":sdk-ocr")
 include(":app")
+

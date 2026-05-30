@@ -1,18 +1,15 @@
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
 }
 
 android {
-    namespace = "com.example.epassport.app"
+    namespace = "com.example.epassport.ocr"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.epassport.app"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -34,10 +31,6 @@ android {
 }
 
 dependencies {
-    implementation(project(":sdk-nfc"))
-    implementation(project(":sdk-ocr"))
     implementation(libs.androidx.core.ktx)
-
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.kotlinx.coroutines.android)
 }
