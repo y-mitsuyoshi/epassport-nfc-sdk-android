@@ -1,7 +1,11 @@
 package com.example.epassport.ocr.ai.openai
 
+import android.util.Base64
 import com.example.epassport.ocr.ai.AiOcrConfig
 import com.example.epassport.ocr.ai.AiOcrResult
+import io.mockk.every
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -17,6 +21,11 @@ class OpenAiOcrClientTest {
 
     @Before
     fun setup() {
+        mockkStatic(Base64::class)
+        every { Base64.encodeToString(any(), any()) } answers {
+            java.util.Base64.getEncoder().encodeToString(firstArg() as ByteArray)
+        }
+
         server = MockWebServer()
         server.start()
         val config = AiOcrConfig(
@@ -30,6 +39,7 @@ class OpenAiOcrClientTest {
     @After
     fun tearDown() {
         server.shutdown()
+        unmockkStatic(Base64::class)
     }
 
     @Test
@@ -51,7 +61,7 @@ class OpenAiOcrClientTest {
             )
         server.enqueue(mockResponse)
 
-        val result = runBlockingCompat { client.recognize(byteArrayOf(0xFF, 0xD8, 0xFF)) }
+        val result = runBlockingCompat { client.recognize(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())) }
 
         assertTrue(result is AiOcrResult.Success)
         assertEquals(

@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.addJsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -109,7 +110,7 @@ class OpenAiOcrClient(private val config: AiOcrConfig) : AiOcrClient {
         private const val DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions"
         private const val DEFAULT_MODEL = "gpt-4o-mini"
 
-        private const val MRZ_PROMPT = """
+        private val MRZ_PROMPT = """
             このパスポート画像のMRZ（Machine Readable Zone）を読み取ってください。
             MRZは通常パスポートの最下部にある2行（または3行）の機械読み取り用テキストです。
             各行の文字をそのまま正確に返してください。余計な説明や記号は不要です。
