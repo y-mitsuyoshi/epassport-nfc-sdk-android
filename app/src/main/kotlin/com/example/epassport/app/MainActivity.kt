@@ -471,7 +471,7 @@ class MainActivity : ComponentActivity() {
         // FLAG_MUTABLE を使う必要はない（外部アプリによるインテント改ざんを防止）。
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
         nfcAdapter?.enableForegroundDispatch(this, pendingIntent, null, null)
     }
