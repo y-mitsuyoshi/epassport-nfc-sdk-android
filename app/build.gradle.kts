@@ -26,7 +26,9 @@ android {
             if (file.exists()) Properties().apply { load(file.inputStream()) } else Properties()
         }
         val aiOcrApiKey = localProps.getProperty("AI_OCR_API_KEY", "")
+        val aiOcrModel = localProps.getProperty("AI_OCR_MODEL", "gemini-1.5-flash")
         buildConfigField("String", "AI_OCR_API_KEY", "\"$aiOcrApiKey\"")
+        buildConfigField("String", "AI_OCR_MODEL", "\"$aiOcrModel\"")
     }
 
     buildTypes {

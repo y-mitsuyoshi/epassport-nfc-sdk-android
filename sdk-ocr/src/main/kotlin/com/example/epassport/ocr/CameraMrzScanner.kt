@@ -53,9 +53,11 @@ class CameraMrzScanner(
 
     private val hasDetected = AtomicBoolean(false)
     private val aiOcrScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val captureRequested = AtomicBoolean(false)
 
-    @Volatile
-    private var lastCaptureTime = 0L
+    override fun triggerCapture() {
+        captureRequested.set(true)
+    }
 
     @SuppressLint("UnsafeOptInUsageError")
     override fun startScan(
@@ -64,7 +66,6 @@ class CameraMrzScanner(
         onFailure: (exception: Exception) -> Unit
     ) {
         hasDetected.set(false)
-        lastCaptureTime = 0L
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(appContext)
         cameraProviderFuture.addListener({
@@ -113,19 +114,17 @@ class CameraMrzScanner(
         imageProxy: ImageProxy,
         onSuccess: (mrzRawText: String) -> Unit
     ) {
+        // ユーザーがシャッター（撮影ボタン）を押していなければ無視する
+        if (!captureRequested.compareAndSet(true, false)) {
+            imageProxy.close()
+            return
+        }
+
         // 既に検出済みなら無視
         if (hasDetected.get()) {
             imageProxy.close()
             return
         }
-
-        // キャプチャ間隔制御（連続API呼び出し防止）
-        val now = System.currentTimeMillis()
-        if (now - lastCaptureTime < captureIntervalMs) {
-            imageProxy.close()
-            return
-        }
-        lastCaptureTime = now
 
         // ImageProxy → JPEG変換（close前にByteArrayをコピー）
         val jpegBytes = try {
