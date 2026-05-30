@@ -60,12 +60,13 @@ class ReadPassportUseCaseTest {
         coVerify { reader.readDg1(secureTransceiver) }
         coVerify { reader.readDg2(secureTransceiver) }
 
-        assertEquals(5, progresses.size)
+        assertEquals(6, progresses.size)
         assertEquals(ReadProgress.CONNECTING, progresses[0])
         assertEquals(ReadProgress.AUTHENTICATING, progresses[1])
         assertEquals(ReadProgress.READING_DG1, progresses[2])
         assertEquals(ReadProgress.READING_DG2, progresses[3])
-        assertEquals(ReadProgress.SUCCESS, progresses[4])
+        assertEquals(ReadProgress.PERFORMING_ACTIVE_AUTH, progresses[4])
+        assertEquals(ReadProgress.SUCCESS, progresses[5])
     } }
 
     @Test(expected = AuthenticationException::class)

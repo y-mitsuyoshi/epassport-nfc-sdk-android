@@ -27,19 +27,19 @@
 
 - **Kotlinコンパイル確認:**
   ```bash
-  ./gradlew :sdk:compileReleaseKotlin
+  ./gradlew :sdk-nfc:compileReleaseKotlin :sdk-ocr:compileReleaseKotlin :app:compileReleaseKotlin
   ```
 - **ユニットテストの実行:**
   ```bash
-  ./gradlew :sdk:testDebugUnitTest
+  ./gradlew :sdk-nfc:testDebugUnitTest :sdk-ocr:testDebugUnitTest
   ```
 - **コードカバレッジレポートの生成 (Jacoco):**
   ```bash
-  ./gradlew :sdk:jacocoTestReport
+  ./gradlew :sdk-nfc:jacocoTestReport
   ```
 - **静的解析・Lintチェックの実行:**
   ```bash
-  ./gradlew :sdk:lint
+  ./gradlew :sdk-nfc:lint :sdk-ocr:lint
   ```
 
 ### 2. Git Hooks によるプッシュ前自動チェックの構築
@@ -51,17 +51,27 @@
 
 echo "Running Pre-Push Quality Verification..."
 
-# 1. テストの実行
-./gradlew :sdk:testDebugUnitTest
+# 1. NFCモジュールの単体テスト実行
+echo "Testing :sdk-nfc..."
+./gradlew :sdk-nfc:testDebugUnitTest
 if [ $? -ne 0 ]; then
-    echo "❌ Error: Unit Tests failed. Push aborted."
+    echo "❌ Error: sdk-nfc Unit Tests failed. Push aborted."
     exit 1
 fi
 
-# 2. Lint/静的解析の実行
-./gradlew :sdk:lint
+# 2. OCRモジュールの単体テスト実行
+echo "Testing :sdk-ocr..."
+./gradlew :sdk-ocr:testDebugUnitTest
 if [ $? -ne 0 ]; then
-    echo "❌ Error: Lint checks failed. Push aborted."
+    echo "❌ Error: sdk-ocr Unit Tests failed. Push aborted."
+    exit 1
+fi
+
+# 3. アプリおよび全モジュールのコンパイル確認
+echo "Compiling app and modules..."
+./gradlew :app:compileDebugKotlin :sdk-nfc:compileDebugKotlin :sdk-ocr:compileDebugKotlin
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Compilation failed. Push aborted."
     exit 1
 fi
 
@@ -73,6 +83,11 @@ exit 0
 ```bash
 chmod +x .git/hooks/pre-push
 ```
+
+現在設定されているフック：
+- **pre-push**: プッシュ前に全モジュールのコンパイル・単体テスト・Lintを自動実行し、失敗時はプッシュを中止します。
+- **pre-commit**: コミット時に `src/main` の変更に対応する `src/test` が存在しない場合、ターミナルに警告を表示します。
+- **prepare-commit-msg**: コミットメッセージ編集画面に、未テストのファイル一覧をコメントとして追加します。
 
 ## Interaction Protocol
 ユーザーとの対話においては、以下のプロトコルを厳守すること：

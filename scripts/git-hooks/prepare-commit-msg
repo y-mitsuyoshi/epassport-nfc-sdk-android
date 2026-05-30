@@ -1,0 +1,45 @@
+#!/bin/bash
+#
+# prepare-commit-msg hook
+# Adds a reminder to the commit message template when source files
+# are modified/added without corresponding unit test files.
+#
+
+COMMIT_MSG_FILE="$1"
+COMMIT_SOURCE="$2"
+
+# Only check for regular commits (not merge, squash, amend, etc.)
+if [ -n "$COMMIT_SOURCE" ]; then
+    exit 0
+fi
+
+# Get staged Kotlin files in src/main directories
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep 'src/main/.*\.kt$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+MISSING_TESTS=""
+while IFS= read -r file; do
+    [ -z "$file" ] && continue
+
+    # Convert src/main/path/Foo.kt -> src/test/path/FooTest.kt
+    TEST_FILE=$(echo "$file" | sed 's|/main/|/test/|' | sed 's|\.kt$|Test.kt|')
+
+    if [ ! -f "$TEST_FILE" ]; then
+        MISSING_TESTS="${MISSING_TESTS}#   - ${file}  ->  Missing: ${TEST_FILE}\n"
+    fi
+done <<< "$STAGED_FILES"
+
+if [ -n "$MISSING_TESTS" ]; then
+    {
+        echo ""
+        echo "# ⚠️  UNIT TEST REMINDER ⚠️"
+        echo "# The following source files were modified/added but have no corresponding tests:"
+        printf '%b' "$MISSING_TESTS"
+        echo "# Please consider adding unit tests before committing."
+    } >> "$COMMIT_MSG_FILE"
+fi
+
+exit 0

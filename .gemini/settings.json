@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./gradlew :sdk:compileReleaseKotlin :sdk:testDebugUnitTest :sdk:lint",
+            "command": "./gradlew :sdk-nfc:compileReleaseKotlin :sdk-nfc:testDebugUnitTest :sdk-nfc:lint :sdk-ocr:compileReleaseKotlin :sdk-ocr:testDebugUnitTest :sdk-ocr:lint :app:compileReleaseKotlin :app:testDebugUnitTest :app:lint",
             "statusMessage": "Verifying code quality (compile, test, lint) before executing commands..."
           }
         ]
