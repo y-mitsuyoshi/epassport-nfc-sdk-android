@@ -78,13 +78,19 @@ class MainActivity : ComponentActivity() {
 
         // ローカルテスト用: BuildConfig からAPIキーを取得（開発時のみ使用）
         // 本番運用では SecureApiKeyProvider を実装し、サーバー動的配信から安全に取得すること。
-        val aiOcrConfig = AiOcrConfig.forLocalTesting(
-            vendor = "openai",
-            apiKey = BuildConfig.AI_OCR_API_KEY,
-            model = "gpt-4o-mini"
-        )
-        val aiOcrClient = AiOcrClientFactory.create(aiOcrConfig)
-        mrzScanner = CameraMrzScanner(this, this, aiOcrClient)
+        try {
+            val aiOcrConfig = AiOcrConfig.forLocalTesting(
+                vendor = "google_ai_studio",
+                apiKey = BuildConfig.AI_OCR_API_KEY,
+                model = "gemini-1.5-flash"
+            )
+            val aiOcrClient = AiOcrClientFactory.create(aiOcrConfig)
+            mrzScanner = CameraMrzScanner(this, this, aiOcrClient)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            android.util.Log.e("MainActivity", "Failed to initialize CameraMrzScanner: ${e.message}")
+            mrzScanner = null
+        }
 
         // Set elegant dark charcoal background
         val rootScrollView = ScrollView(this).apply {
@@ -356,6 +362,15 @@ class MainActivity : ComponentActivity() {
             scanButton.visibility = View.VISIBLE
             showStatus("MRZ情報を手動入力し、読み取りボタンを押してください", Color.parseColor("#94A3B8"), Color.parseColor("#1E293B"))
         } else {
+            if (mrzScanner == null) {
+                android.widget.Toast.makeText(
+                    this,
+                    "OCR初期化エラー: local.propertiesにAI_OCR_API_KEYを正しく設定し、再ビルドしてください。",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                switchMode(InputMode.MANUAL)
+                return
+            }
             inputCard.visibility = View.GONE
             cameraCard.visibility = View.VISIBLE
             
