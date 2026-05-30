@@ -45,4 +45,6 @@ dependencies {
 
     // Google ML Kit Text Recognition (オンデバイス: クラウド送信なし)
     implementation(libs.mlkit.text.recognition)
+
+    testImplementation(libs.junit)
 }

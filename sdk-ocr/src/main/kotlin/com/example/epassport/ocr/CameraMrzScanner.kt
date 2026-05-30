@@ -148,24 +148,6 @@ class CameraMrzScanner(
                     .replace(Regex("[\\(\\)\\{\\}\\[\\]«»]"), "<")
             }
 
-        val mrzPattern = Regex("^[A-Z0-9<]{44}$")
-
-        for (i in 0 until sortedLines.size - 1) {
-            val line1 = sortedLines[i]
-            val line2 = sortedLines[i + 1]
-
-            // 2行連続で 44文字の MRZ パターンに合致するかチェック
-            if (mrzPattern.matches(line1) && mrzPattern.matches(line2)) {
-                // 1行目の開始文字の誤認識（P が R, F などの類似文字にブレるケース）も許容・自動補正
-                if (line1.startsWith("P<") || line1.startsWith("P") || line1.startsWith("R<") || line1.startsWith("F<")) {
-                    val normalizedLine1 = if (line1.startsWith("P<")) line1 else "P<" + line1.substring(line1.indexOf('<').coerceAtLeast(1))
-                    // 正確に44文字であることを保証
-                    if (normalizedLine1.length == 44) {
-                        return "$normalizedLine1\n$line2"
-                    }
-                }
-            }
-        }
-        return null
+        return MrzExtractor.extractFromLines(sortedLines)
     }
 }
