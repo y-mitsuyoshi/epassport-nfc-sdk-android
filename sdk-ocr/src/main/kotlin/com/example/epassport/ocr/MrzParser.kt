@@ -91,13 +91,13 @@ object MrzParser {
      */
     private fun parseTd3(lines: List<String>): ParsedMrz {
         val line2 = lines[1]
-        require(line2.length >= 34) {
-            "Invalid TD3 Line 2 length: expected >= 34 chars, got ${line2.length}"
+        require(line2.length >= 27) {
+            "Invalid TD3 Line 2 length: expected >= 27 chars, got ${line2.length}"
         }
 
         val documentNumber = line2.substring(0, 9).replace("<", "")
         val dateOfBirth = line2.substring(13, 19)
-        val dateOfExpiry = line2.substring(28, 34)
+        val dateOfExpiry = line2.substring(21, 27)
 
         return ParsedMrz(documentNumber, dateOfBirth, dateOfExpiry)
     }
