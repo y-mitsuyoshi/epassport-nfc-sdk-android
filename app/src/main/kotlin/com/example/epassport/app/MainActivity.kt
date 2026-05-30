@@ -1,8 +1,10 @@
 package com.example.epassport.app
 
+import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -14,23 +16,33 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.camera.view.PreviewView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import com.example.epassport.api.EPassportReader
 import com.example.epassport.api.ReadResult
 import com.example.epassport.domain.model.MrzData
 import com.example.epassport.usecase.ReadProgress
+import com.example.epassport.ocr.CameraMrzScanner
+import com.example.epassport.ocr.MrzParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-class MainActivity : Activity() {
+class MainActivity : Activity(), LifecycleOwner {
+
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    override val lifecycle: Lifecycle get() = lifecycleRegistry
 
     private var nfcAdapter: NfcAdapter? = null
     private lateinit var statusTextView: TextView
@@ -39,16 +51,35 @@ class MainActivity : Activity() {
     private lateinit var doeInput: EditText
     private lateinit var scanButton: Button
     
+    // Mode Switch UI
+    private enum class InputMode { MANUAL, CAMERA }
+    private var currentMode = InputMode.MANUAL
+    private lateinit var inputCard: LinearLayout
+    private lateinit var cameraCard: LinearLayout
+    private lateinit var previewView: PreviewView
+    private lateinit var manualModeBtn: Button
+    private lateinit var cameraModeBtn: Button
+    
     // Result UI components
     private lateinit var resultCard: LinearLayout
     private lateinit var faceImageView: ImageView
     private lateinit var detailsLayout: LinearLayout
 
     private var isReadyToScan = false
+    private var scannedMrzData: MrzData? = null
+    private var mrzScanner: CameraMrzScanner? = null
     private val activityScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    companion object {
+        private const val CAMERA_PERMISSION_REQUEST_CODE = 1001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+
+        nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        mrzScanner = CameraMrzScanner(this, this)
 
         // Set elegant dark charcoal background
         val rootScrollView = ScrollView(this).apply {
@@ -78,11 +109,46 @@ class MainActivity : Activity() {
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             setTextColor(Color.parseColor("#94A3B8")) // Slate 400
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 48)
+            setPadding(0, 0, 0, 36)
         }
 
-        // 2. Input Fields Card Card
-        val inputCard = LinearLayout(this).apply {
+        // 2. Mode Selector Tabs
+        val modeSelectorLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(8, 8, 8, 8)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1E293B")) // Slate 800
+                cornerRadius = 24f
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, 36)
+            }
+        }
+
+        manualModeBtn = Button(this).apply {
+            text = "手動入力"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { switchMode(InputMode.MANUAL) }
+        }
+
+        cameraModeBtn = Button(this).apply {
+            text = "カメラOCR"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { switchMode(InputMode.CAMERA) }
+        }
+
+        modeSelectorLayout.addView(manualModeBtn)
+        modeSelectorLayout.addView(cameraModeBtn)
+
+        // 3. Input Fields Card (Manual Mode UI)
+        inputCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 40, 40, 40)
             background = GradientDrawable().apply {
@@ -109,7 +175,38 @@ class MainActivity : Activity() {
         inputCard.addView(createLabel("Date of Expiry / 有効期限 (YYMMDD)"))
         inputCard.addView(doeInput)
 
-        // 3. Scan Button
+        // 4. Camera Preview Card (Camera OCR Mode UI)
+        cameraCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(16, 16, 16, 16)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1E293B")) // Slate 800
+                cornerRadius = 32f
+                setStroke(1, Color.parseColor("#334155")) // Slate 700
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                560 // Fixed height for elegant alignment
+            ).apply {
+                setMargins(0, 0, 0, 36)
+            }
+        }
+
+        previewView = PreviewView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+            // Round corners for premium feel
+            background = GradientDrawable().apply {
+                cornerRadius = 24f
+            }
+            clipToOutline = true
+        }
+        cameraCard.addView(previewView)
+
+        // 5. Scan Trigger / Manual Confirmation Button
         scanButton = Button(this).apply {
             text = "NFC 読み取りを開始する"
             textSize = 16f
@@ -127,20 +224,24 @@ class MainActivity : Activity() {
                 setMargins(0, 0, 0, 36)
             }
             setOnClickListener {
-                val docNo = docNoInput.text.toString().trim()
-                val dob = dobInput.text.toString().trim()
-                val doe = doeInput.text.toString().trim()
-                if (docNo.isBlank() || dob.isBlank() || doe.isBlank()) {
-                    showStatus("エラー：MRZ情報を入力してください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
-                    return@setOnClickListener
+                if (currentMode == InputMode.MANUAL) {
+                    val docNo = docNoInput.text.toString().trim()
+                    val dob = dobInput.text.toString().trim()
+                    val doe = doeInput.text.toString().trim()
+                    if (docNo.isBlank() || dob.isBlank() || doe.isBlank()) {
+                        showStatus("エラー：MRZ情報を入力してください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+                        return@setOnClickListener
+                    }
+                    scannedMrzData = MrzData(docNo, dob, doe)
+                    triggerScanReady()
+                } else {
+                    // In camera mode, scanButton acts as a restart button for camera if needed
+                    startCameraOcrScan()
                 }
-                isReadyToScan = true
-                showStatus("【スキャン待機中】\nスマホの裏側中央（またはカメラ付近）をパスポートのICカードページに密着させてください...", Color.parseColor("#3B82F6"), Color.parseColor("#DBEAFE"))
-                resultCard.visibility = View.GONE
             }
         }
 
-        // 4. Status Indicator Box
+        // 6. Status Indicator Box
         statusTextView = TextView(this).apply {
             text = "上記3つの項目を入力後、読み取りを開始してください"
             textSize = 14f
@@ -159,7 +260,7 @@ class MainActivity : Activity() {
             }
         }
 
-        // 5. Result Container Card (Hidden by default)
+        // 7. Result Container Card (Hidden by default)
         resultCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
@@ -211,7 +312,9 @@ class MainActivity : Activity() {
         // Assemble all layouts
         mainLayout.addView(titleView)
         mainLayout.addView(subtitleView)
+        mainLayout.addView(modeSelectorLayout)
         mainLayout.addView(inputCard)
+        mainLayout.addView(cameraCard)
         mainLayout.addView(scanButton)
         mainLayout.addView(statusTextView)
         mainLayout.addView(resultCard)
@@ -219,7 +322,106 @@ class MainActivity : Activity() {
         rootScrollView.addView(mainLayout)
         setContentView(rootScrollView)
 
-        nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        // Initialize state to Manual
+        switchMode(InputMode.MANUAL)
+    }
+
+    private fun switchMode(mode: InputMode) {
+        currentMode = mode
+        resultCard.visibility = View.GONE
+        isReadyToScan = false
+
+        if (mode == InputMode.MANUAL) {
+            mrzScanner?.stopScan()
+            inputCard.visibility = View.VISIBLE
+            cameraCard.visibility = View.GONE
+            
+            // Styled buttons
+            manualModeBtn.setTextColor(Color.WHITE)
+            manualModeBtn.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#2563EB")) // Active Royal Blue
+                cornerRadius = 20f
+            }
+            cameraModeBtn.setTextColor(Color.parseColor("#94A3B8")) // Inactive Slate 400
+            cameraModeBtn.background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+            }
+            
+            scanButton.text = "NFC 読み取りを開始する"
+            scanButton.visibility = View.VISIBLE
+            showStatus("MRZ情報を手動入力し、読み取りボタンを押してください", Color.parseColor("#94A3B8"), Color.parseColor("#1E293B"))
+        } else {
+            inputCard.visibility = View.GONE
+            cameraCard.visibility = View.VISIBLE
+            
+            // Styled buttons
+            cameraModeBtn.setTextColor(Color.WHITE)
+            cameraModeBtn.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#2563EB")) // Active Royal Blue
+                cornerRadius = 20f
+            }
+            manualModeBtn.setTextColor(Color.parseColor("#94A3B8")) // Inactive Slate 400
+            manualModeBtn.background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+            }
+            
+            scanButton.text = "カメラを再起動する"
+            scanButton.visibility = View.GONE
+            showStatus("カメラ起動中... パスポートのMRZ部分（最下部2行）を映してください", Color.parseColor("#EAB308"), Color.parseColor("#FEF9C3"))
+            
+            // Request camera permission
+            if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                startCameraOcrScan()
+            } else {
+                requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
+            }
+        }
+    }
+
+    private fun startCameraOcrScan() {
+        showStatus("パスポートのMRZ（最下部の2行）をカメラ枠内に合わせてください...", Color.parseColor("#EAB308"), Color.parseColor("#FEF9C3"))
+        mrzScanner?.startScan(
+            cameraPreviewView = previewView,
+            onSuccess = { mrzText ->
+                runOnUiThread {
+                    try {
+                        val parsed = MrzParser.parse(mrzText)
+                        scannedMrzData = MrzData(parsed.documentNumber, parsed.dateOfBirth, parsed.dateOfExpiry)
+                        
+                        // Automatically transit to NFC scan ready
+                        triggerScanReady()
+                    } catch (e: Exception) {
+                        showStatus("OCR読み取りエラー: 解析に失敗しました。再試行中...", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+                        // Restart camera on failure
+                        startCameraOcrScan()
+                    }
+                }
+            },
+            onFailure = { e ->
+                runOnUiThread {
+                    showStatus("カメラエラー: ${e.message}", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+                }
+            }
+        )
+    }
+
+    private fun triggerScanReady() {
+        isReadyToScan = true
+        scanButton.visibility = View.VISIBLE
+        scanButton.text = "NFC スキャン待機中..."
+        showStatus("【スキャン準備OK！】\nスマホの裏側中央（またはカメラ付近）をパスポートのICカードページに密着させてください...", Color.parseColor("#3B82F6"), Color.parseColor("#DBEAFE"))
+        resultCard.visibility = View.GONE
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startCameraOcrScan()
+            } else {
+                showStatus("カメラの権限が拒否されたため、OCRを使用できません。手動入力に切り替えてください。", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+            }
+        }
     }
 
     private fun createLabel(text: String): TextView {
@@ -262,8 +464,14 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+    }
+
     override fun onResume() {
         super.onResume()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         val intent = Intent(this, javaClass).apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
@@ -273,19 +481,27 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         nfcAdapter?.disableForegroundDispatch(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        mrzScanner?.stopScan()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         activityScope.cancel()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action || NfcAdapter.ACTION_TAG_DISCOVERED == intent.action) {
-            if (!isReadyToScan) {
-                showStatus("先に「NFC読み取りを開始する」ボタンを押してください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+            if (!isReadyToScan || scannedMrzData == null) {
+                showStatus("先にMRZ読み取り（手動またはカメラ）を完了させてください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
                 return
             }
             @Suppress("DEPRECATION")
@@ -304,21 +520,17 @@ class MainActivity : Activity() {
             return
         }
 
-        val docNo = docNoInput.text.toString().trim()
-        val dob = dobInput.text.toString().trim()
-        val doe = doeInput.text.toString().trim()
-        val mrzData = MrzData(docNo, dob, doe)
-        System.err.println("User Inputs - docNo: '$docNo' (len=${docNo.length}), dob: '$dob' (len=${dob.length}), doe: '$doe' (len=${doe.length})")
-        System.err.println("MRZ Info (MainActivity): '${mrzData.mrzInformation}'")
+        val mrz = scannedMrzData ?: return
 
         activityScope.launch {
-            val result = EPassportReader.read(tag, mrzData) { progress ->
+            val result = EPassportReader.read(tag, mrz) { progress ->
                 activityScope.launch(Dispatchers.Main) {
                     when (progress) {
                         ReadProgress.CONNECTING -> showStatus("NFC接続中...", Color.parseColor("#2563EB"), Color.parseColor("#DBEAFE"))
                         ReadProgress.AUTHENTICATING -> showStatus("暗号認証（BAC）を実行中...", Color.parseColor("#7C3AED"), Color.parseColor("#F3E8FF"))
                         ReadProgress.READING_DG1 -> showStatus("テキストデータ（DG1）を読み込み中...", Color.parseColor("#D97706"), Color.parseColor("#FEF3C7"))
                         ReadProgress.READING_DG2 -> showStatus("顔写真データ（DG2）を読み込み中...", Color.parseColor("#D97706"), Color.parseColor("#FEF3C7"))
+                        ReadProgress.PERFORMING_ACTIVE_AUTH -> showStatus("🔒 アクティブ認証 (クローン検知) を実行中...", Color.parseColor("#059669"), Color.parseColor("#D1FAE5"))
                         else -> {}
                     }
                 }
@@ -327,7 +539,7 @@ class MainActivity : Activity() {
             when (result) {
                 is ReadResult.Success -> {
                     showStatus("🎉 読み込み成功！ICデータを取得しました。", Color.parseColor("#059669"), Color.parseColor("#D1FAE5"))
-                    val passportData = result.data
+                    val passportData = result.passportData
                     
                     // Render Image if available
                     val dg2 = passportData.dg2
@@ -342,7 +554,6 @@ class MainActivity : Activity() {
                             faceImageView.setImageBitmap(bitmap)
                             faceImageView.visibility = View.VISIBLE
                         } else {
-                            // If decoding fails (e.g. JP2), we hide the image or show placeholder
                             faceImageView.visibility = View.GONE
                         }
                     } else {
@@ -362,17 +573,26 @@ class MainActivity : Activity() {
                     addDetailRow("GENDER / 性別", getGenderName(dg1.sex))
                     addDetailRow("ISSUING STATE / 発行国", getCountryName(dg1.issuingState))
                     addDetailRow("DOCUMENT CODE / 種類", dg1.documentCode)
-                    addDetailRow("🔒 DERIVED MRZ INFO / 鍵生成用のMRZ情報 (デバッグ用)", mrzData.mrzInformation)
+                    
+                    val hasAA = passportData.activeAuthenticationData != null
+                    addDetailRow("🔒 ACTIVE AUTHENTICATION / 真贋検証", if (hasAA) "SUCCESS (本物判定)" else "NOT SUPPORTED (非対応)")
+                    addDetailRow("🔒 DERIVED MRZ INFO / 鍵生成用のMRZ情報", mrz.mrzInformation)
 
                     resultCard.visibility = View.VISIBLE
                 }
                 is ReadResult.Error -> {
                     val e = result.exception
-                    showStatus("❌ エラー発生: ${e.message}\n(パスポートが離れたか、入力した文字が間違っている可能性があります)", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+                    showStatus("❌ エラー発生: ${e.message}\n(パスポートが離れたか、入力・スキャンした文字が間違っている可能性があります)", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
                     e.printStackTrace()
                 }
             }
             isReadyToScan = false
+            scannedMrzData = null
+            
+            // Switch back scan button visibility if manual
+            if (currentMode == InputMode.CAMERA) {
+                scanButton.visibility = View.GONE
+            }
         }
     }
 

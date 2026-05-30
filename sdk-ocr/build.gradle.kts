@@ -33,4 +33,13 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
+
+    // CameraX dependencies for camera stream capture
+    val cameraVersion = "1.3.1"
+    implementation("androidx.camera:camera-camera2:$cameraVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
+    implementation("androidx.camera:camera-view:$cameraVersion")
+
+    // Google ML Kit Text Recognition (On-device GMS model)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
 }
