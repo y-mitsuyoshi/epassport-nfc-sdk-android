@@ -10,7 +10,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 @OptIn(ExperimentalEncodingApi::class)
 class Dg2Data(
     faceImageBytes: ByteArray,  // JPEG or JP2 raw bytes
-    val mimeType: String        // "image/jpeg" or "image/jp2"
+    val mimeType: String,        // "image/jpeg" or "image/jp2"
+    val rawBytes: ByteArray = byteArrayOf()
 ) {
     /**
      * 外部からの改変を防ぐため、コンストラクタで受け取ったバイト配列のコピーを保持する。

@@ -1,5 +1,7 @@
 package com.example.epassport.usecase
 
+import com.example.epassport.data.auth.CscaTrustStore
+import com.example.epassport.data.auth.PassportVerifier
 import com.example.epassport.domain.exception.EPassportException
 import com.example.epassport.domain.exception.NfcTagLostException
 import com.example.epassport.domain.model.MrzData
@@ -37,6 +39,7 @@ class ReadPassportUseCase(
         transceiver: NfcTransceiver,
         mrzData: MrzData,
         challenge: ByteArray? = null,
+        trustStore: CscaTrustStore? = null,
         onProgress: (ReadProgress) -> Unit = {}
     ): PassportData {
         try {
@@ -69,7 +72,17 @@ class ReadPassportUseCase(
                 onProgress(ReadProgress.READING_DG2)
                 val dg2 = reader.readDg2(secureTransceiver)
 
-                // 5. Try Active Authentication (AA) - failure here should not block success of reading
+                // 5. Read SOD for Passive Authentication
+                var sodBytes: ByteArray? = null
+                if (trustStore != null) {
+                    try {
+                        sodBytes = reader.readSod(secureTransceiver)
+                    } catch (e: EPassportException) {
+                        android.util.Log.w("ReadPassportUseCase", "Failed to read SOD: ${e.message}")
+                    }
+                }
+
+                // 6. Try Active Authentication (AA) - failure here should not block success of reading
                 var aaData: com.example.epassport.domain.model.ActiveAuthenticationData? = null
                 try {
                     onProgress(ReadProgress.PERFORMING_ACTIVE_AUTH)
@@ -99,8 +112,20 @@ class ReadPassportUseCase(
                     android.util.Log.w("ReadPassportUseCase", "Unexpected error during Active Authentication: ${e.message}")
                 }
 
+                // 7. Perform Passive / Active Authentication verification if trust store is provided
+                val verificationResult = if (trustStore != null && sodBytes != null) {
+                    val dataGroups = mutableMapOf<Int, ByteArray>(1 to dg1.rawBytes, 2 to dg2.rawBytes)
+                    aaData?.publicKeyInfo?.let { dataGroups[15] = it }
+                    PassportVerifier().verify(sodBytes, dataGroups, aaData, trustStore)
+                } else null
+
                 onProgress(ReadProgress.SUCCESS)
-                return PassportData(dg1 = dg1, dg2 = dg2, activeAuthenticationData = aaData)
+                return PassportData(
+                    dg1 = dg1,
+                    dg2 = dg2,
+                    activeAuthenticationData = aaData,
+                    verificationResult = verificationResult
+                )
             } finally {
                 // セッション鍵のゼロクリア (SecureMessaging が Closeable を実装している場合)
                 (secureTransceiver as? java.io.Closeable)?.close()

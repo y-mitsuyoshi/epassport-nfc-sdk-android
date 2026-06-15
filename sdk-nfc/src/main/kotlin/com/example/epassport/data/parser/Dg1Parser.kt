@@ -23,14 +23,14 @@ object Dg1Parser {
 
         // ICAO Doc 9303 Part 4, Section 4.2: MRZ Formats (TD1, TD2, TD3)
         return when (mrzString.length) {
-            88 -> parseTd3(mrzString) // MRZ is 2 lines of 44 characters
-            90 -> parseTd1(mrzString) // MRZ is 3 lines of 30 characters
-            72 -> parseTd2(mrzString) // MRZ is 2 lines of 36 characters
+            88 -> parseTd3(mrzString, data) // MRZ is 2 lines of 44 characters
+            90 -> parseTd1(mrzString, data) // MRZ is 3 lines of 30 characters
+            72 -> parseTd2(mrzString, data) // MRZ is 2 lines of 36 characters
             else -> throw InvalidDataException("Invalid MRZ length: ${mrzString.length}")
         }
     }
 
-    private fun parseTd3(mrz: String): Dg1Data {
+    private fun parseTd3(mrz: String, data: ByteArray): Dg1Data {
         // Line 1
         val documentCode = mrz.substring(0, 2)
         val issuingState = mrz.substring(2, 5)
@@ -69,11 +69,12 @@ object Dg1Parser {
             nationality = nationality.replace("<", ""),
             optionalData2 = personalNumber.replace("<", ""),
             primaryIdentifier = primaryIdentifier,
-            secondaryIdentifier = secondaryIdentifier
+            secondaryIdentifier = secondaryIdentifier,
+            rawBytes = data
         )
     }
 
-    private fun parseTd1(mrz: String): Dg1Data {
+    private fun parseTd1(mrz: String, data: ByteArray): Dg1Data {
         val namesField = mrz.substring(60, 90)
         val nameParts = namesField.split("<<")
         val primaryIdentifier = nameParts[0].replace("<", " ").trim()
@@ -108,11 +109,12 @@ object Dg1Parser {
             nationality = "", // TD1 MRZ does not contain a dedicated nationality field
             optionalData2 = optionalData2.replace("<", ""),
             primaryIdentifier = primaryIdentifier,
-            secondaryIdentifier = secondaryIdentifier
+            secondaryIdentifier = secondaryIdentifier,
+            rawBytes = data
         )
     }
 
-    private fun parseTd2(mrz: String): Dg1Data {
+    private fun parseTd2(mrz: String, data: ByteArray): Dg1Data {
         val namesField = mrz.substring(5, 36)
         val nameParts = namesField.split("<<")
         val primaryIdentifier = nameParts[0].replace("<", " ").trim()
@@ -146,7 +148,8 @@ object Dg1Parser {
             nationality = nationality.replace("<", ""),
             optionalData2 = optionalData2.replace("<", ""),
             primaryIdentifier = primaryIdentifier,
-            secondaryIdentifier = secondaryIdentifier
+            secondaryIdentifier = secondaryIdentifier,
+            rawBytes = data
         )
     }
 

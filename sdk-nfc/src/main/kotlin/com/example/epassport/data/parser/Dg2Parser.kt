@@ -26,7 +26,7 @@ object Dg2Parser {
             val faceImageResult = extractImage(bitNode.value)
                 ?: throw InvalidDataException("Facial image header (JPEG/JP2000) not found in DG2")
                 
-            return Dg2Data(faceImageResult.first, faceImageResult.second)
+            return Dg2Data(faceImageResult.first, faceImageResult.second, rawBytes = data)
             
         } catch (e: Exception) {
             throw InvalidDataException("Failed to parse DG2: ${e.message}", e)

@@ -4,6 +4,7 @@ import android.content.Context
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
 import com.example.epassport.data.auth.BacAuthenticator
+import com.example.epassport.data.auth.CscaTrustStore
 import com.example.epassport.data.nfc.IsoDepTransceiver
 import com.example.epassport.data.reader.IcaoDataGroupReader
 import com.example.epassport.data.security.RuntimeSecurityChecker
@@ -38,6 +39,7 @@ object EPassportReader {
         tag: Tag,
         mrzData: MrzData,
         challenge: ByteArray? = null,
+        trustStore: CscaTrustStore? = null,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult = withContext(Dispatchers.IO) {
         val securityChecker = RuntimeSecurityChecker(context)
@@ -49,7 +51,7 @@ object EPassportReader {
             )
         }
 
-        readInternal(tag, mrzData, challenge, onProgress)
+        readInternal(tag, mrzData, challenge, trustStore, onProgress)
     }
 
     /**
@@ -68,15 +70,17 @@ object EPassportReader {
         tag: Tag,
         mrzData: MrzData,
         challenge: ByteArray? = null,
+        trustStore: CscaTrustStore? = null,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult = withContext(Dispatchers.IO) {
-        readInternal(tag, mrzData, challenge, onProgress)
+        readInternal(tag, mrzData, challenge, trustStore, onProgress)
     }
 
     private suspend fun readInternal(
         tag: Tag,
         mrzData: MrzData,
         challenge: ByteArray? = null,
+        trustStore: CscaTrustStore? = null,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult {
         val isoDep = IsoDep.get(tag) ?: return ReadResult.Error(
@@ -97,6 +101,7 @@ object EPassportReader {
                 transceiver = transceiver,
                 mrzData = mrzData,
                 challenge = challenge,
+                trustStore = trustStore,
                 onProgress = { progress -> onProgress?.invoke(progress) }
             )
             ReadResult.Success(passportData)
