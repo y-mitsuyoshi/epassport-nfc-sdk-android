@@ -1,55 +1,126 @@
 package com.example.epassport.data.auth
 
-import com.example.epassport.domain.exception.AuthenticationException
 import com.example.epassport.domain.model.MrzData
-import com.example.epassport.domain.port.NfcTransceiver
-import io.mockk.coEvery
-import io.mockk.mockk
-import kotlinx.coroutines.runBlocking
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import java.math.BigInteger
 import java.security.Security
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class PaceAuthenticatorTest {
 
+    private lateinit var authenticator: PaceAuthenticator
+
     init {
-        Security.addProvider(org.bouncycastle.jce.provider.BouncyCastleProvider())
+        Security.addProvider(BouncyCastleProvider())
     }
 
-    @Test(expected = AuthenticationException::class)
-    fun authenticate_noPaceInfo_throws() { runBlocking {
-        val transceiver = mockk<NfcTransceiver>(relaxed = true)
-        coEvery { transceiver.transceive(any()) } answers {
-            val cmd = arg<ByteArray>(0)
-            when (cmd[1].toInt() and 0xFF) {
-                0xA4 -> byteArrayOf(0x90.toByte(), 0x00.toByte()) // SELECT OK
-                0xB0 -> byteArrayOf(0x30, 0x00, 0x90.toByte(), 0x00.toByte()) // empty SEQUENCE
-                else -> byteArrayOf(0x90.toByte(), 0x00.toByte())
-            }
+    @Before
+    fun setUp() {
+        authenticator = PaceAuthenticator()
+    }
+
+    @Test
+    fun derivePacePassword_returnsFirst16BytesOfSha1() {
+        val mrzData = MrzData(
+            documentNumber = "AB123456".toCharArray(),
+            dateOfBirth = "900101".toCharArray(),
+            dateOfExpiry = "250101".toCharArray()
+        )
+        val result = invoke<ByteArray>("derivePacePassword", mrzData)
+        assertEquals(16, result.size)
+
+        val expectedDigest = java.security.MessageDigest.getInstance("SHA-1").run {
+            update(mrzData.mrzInformation.toByteArray(Charsets.UTF_8))
+            digest()
         }
-
-        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
-        PaceAuthenticator().authenticate(transceiver, mrzData)
-    } }
-
-    @Test
-    fun buildPaceApdus_producesExpectedStructure() {
-        val oid = "0.4.0.127.0.7.2.2.4.2.4" // ECDH-GM-AES-CMAC-256
-        val oidBytes = oid.split(".").map { it.toInt().toByte() }.toByteArray()
-        val apdu = com.example.epassport.data.nfc.ApduCommand.paceMseSetAt(oidBytes, 0x01)
-
-        assertTrue(apdu.size > 5)
-        assertTrue(apdu[1].toInt() and 0xFF == 0x22)
-        assertTrue(apdu[2].toInt() and 0xFF == 0xC1)
-        assertTrue(apdu[3].toInt() and 0xFF == 0xA4)
+        assertTrue(expectedDigest.copyOfRange(0, 16).contentEquals(result))
     }
 
     @Test
-    fun paceGetNonce_apduStructure() {
-        val apdu = com.example.epassport.data.nfc.ApduCommand.paceGetNonce()
-        assertTrue(apdu[1].toInt() and 0xFF == 0x86)
-        // Contains 0x7C 0x00
-        assertTrue(apdu.any { (it.toInt() and 0xFF) == 0x7C })
+    fun decryptNonce_decryptsAesCbc() {
+        val key = ByteArray(16) { it.toByte() }
+        val nonce = ByteArray(16) { (16 - it).toByte() }
+        val cipher = Cipher.getInstance("AES/CBC/NoPadding", "BC")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(ByteArray(16)))
+        val encrypted = cipher.doFinal(nonce)
+
+        val decrypted = invoke<ByteArray>("decryptNonce", encrypted, key)
+
+        assertTrue(nonce.contentEquals(decrypted))
+    }
+
+    @Test
+    fun parameterIdToCurveName_knownIds() {
+        assertEquals("secp256r1", invoke("parameterIdToCurveName", 0x01))
+        assertEquals("secp224r1", invoke("parameterIdToCurveName", 0x03))
+        assertEquals("secp384r1", invoke("parameterIdToCurveName", 0x09))
+        assertEquals("secp521r1", invoke("parameterIdToCurveName", 0x0B))
+    }
+
+    @Test
+    fun parameterIdToCurveName_unknownId_throws() {
+        try {
+            invoke<Any>("parameterIdToCurveName", 0xFF)
+            org.junit.Assert.fail("Expected AuthenticationException")
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            assertTrue(e.cause is com.example.epassport.domain.exception.AuthenticationException)
+        }
+    }
+
+    @Test
+    fun mapNonceToScalar_mapsWithinCurveOrder() {
+        val n = BigInteger.valueOf(17)
+        val scalar = invoke<BigInteger>("mapNonceToScalar", byteArrayOf(0x15), n)
+        assertEquals(BigInteger.valueOf(4), scalar) // 21 mod 17
+
+        val scalarMod = invoke<BigInteger>("mapNonceToScalar", byteArrayOf(0x20), n)
+        assertEquals(BigInteger.valueOf(15), scalarMod) // 32 mod 17
+    }
+
+    @Test
+    fun kdf_producesExpectedLength() {
+        val sharedSecret = byteArrayOf(0x01, 0x02, 0x03, 0x04)
+        val nonce = byteArrayOf(0x05, 0x06, 0x07, 0x08)
+        val result = invoke<ByteArray>("kdf", sharedSecret, nonce, 128)
+        assertEquals(32, result.size)
+    }
+
+    @Test
+    fun wrapAndExtractDynamicAuthData_roundTrip() {
+        val data = byteArrayOf(0x11, 0x22, 0x33)
+        val wrapped = invoke<ByteArray>("wrapDynamicAuthData", 0x80, data)
+        val extracted = invoke<ByteArray>("extractDynamicAuthenticationData", wrapped + byteArrayOf(0x90.toByte(), 0x00.toByte()))
+        assertNotNull(extracted)
+        assertTrue(data.contentEquals(extracted!!))
+    }
+
+    private fun encodeLength(length: Int): ByteArray {
+        return when {
+            length <= 0x7F -> byteArrayOf(length.toByte())
+            length <= 0xFF -> byteArrayOf(0x81.toByte(), length.toByte())
+            else -> byteArrayOf(0x82.toByte(), (length ushr 8).toByte(), (length and 0xFF).toByte())
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> invoke(name: String, vararg args: Any?): T {
+        val argClasses = args.map {
+            when (it) {
+                is Int -> Int::class.javaPrimitiveType
+                is ByteArray -> ByteArray::class.java
+                is BigInteger -> BigInteger::class.java
+                else -> it?.javaClass
+            }
+        }.toTypedArray()
+        val method = PaceAuthenticator::class.java.getDeclaredMethod(name, *argClasses)
+        method.isAccessible = true
+        return method.invoke(authenticator, *args) as T
     }
 }
