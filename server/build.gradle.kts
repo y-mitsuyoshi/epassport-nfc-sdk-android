@@ -19,9 +19,11 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.3")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.bouncycastle:bcprov-jdk18on:1.77")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.77")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test:3.2.0")
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
 }
 
 tasks.withType<Test> {
