@@ -85,7 +85,7 @@ class AesCmacSecureMessaging(
         val mac = calculateCmac(ksMac, macData)
 
         // Build DO8E
-        val do8e = byteArrayOf(0x8E.toByte(), 0x08.toByte()) + mac
+        val do8e = byteArrayOf(0x8E.toByte(), 0x10.toByte()) + mac
 
         // Build protected APDU
         val cmdStream = ByteArrayOutputStream()
@@ -111,24 +111,7 @@ class AesCmacSecureMessaging(
         }
 
         val data = response.copyOfRange(0, response.size - 2)
-        var offset = 0
-        var do87Value: ByteArray? = null
-        var do99Value: ByteArray? = null
-        var do8eValue: ByteArray? = null
-
-        while (offset < data.size) {
-            val tag = data[offset].toInt() and 0xFF
-            offset++
-            val (len, lenBytes) = parseLength(data, offset)
-            offset += lenBytes
-            val value = data.copyOfRange(offset, offset + len)
-            offset += len
-            when (tag) {
-                0x87 -> do87Value = value
-                0x99 -> do99Value = value
-                0x8E -> do8eValue = value
-            }
-        }
+        var (do87Value, do99Value, do8eValue) = parseResponseTlvs(data)
 
         if (do8eValue == null || do99Value == null) {
             throw AuthenticationException("Invalid SM response structure")
@@ -169,11 +152,39 @@ class AesCmacSecureMessaging(
         return byteArrayOf(sw1, sw2)
     }
 
+    private fun parseResponseTlvs(data: ByteArray): Triple<ByteArray?, ByteArray?, ByteArray?> {
+        var offset = 0
+        var do87Value: ByteArray? = null
+        var do99Value: ByteArray? = null
+        var do8eValue: ByteArray? = null
+
+        while (offset < data.size) {
+            val tag = data[offset].toInt() and 0xFF
+            offset++
+            val (len, lenBytes) = parseLength(data, offset)
+            offset += lenBytes
+            val value = data.copyOfRange(offset, offset + len)
+            offset += len
+            when (tag) {
+                0x87 -> do87Value = value
+                0x99 -> do99Value = value
+                0x8E -> do8eValue = value
+                0x7C -> {
+                    val nested = parseResponseTlvs(value)
+                    do87Value = do87Value ?: nested.first
+                    do99Value = do99Value ?: nested.second
+                    do8eValue = do8eValue ?: nested.third
+                }
+            }
+        }
+        return Triple(do87Value, do99Value, do8eValue)
+    }
+
     private fun calculateCmac(key: ByteArray, data: ByteArray): ByteArray {
         val mac = CMac(AESEngine())
         mac.init(KeyParameter(key))
         mac.update(data, 0, data.size)
-        val result = ByteArray(8)
+        val result = ByteArray(16)
         mac.doFinal(result, 0)
         return result
     }
