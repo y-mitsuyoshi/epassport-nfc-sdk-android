@@ -67,4 +67,9 @@ dependencies {
 
     // EncryptedSharedPreferences for secure local storage of sensitive data
     implementation(libs.androidx.security.crypto)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.preference)
 }

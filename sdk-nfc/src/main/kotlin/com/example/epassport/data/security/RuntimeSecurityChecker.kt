@@ -10,9 +10,10 @@ import com.scottyab.rootbeer.RootBeer
  *
  * Root 化端末・エミュレータ・デバッグ接続など、安全ではない環境を検知する。
  */
-class RuntimeSecurityChecker(private val context: Context) {
-
-    private val rootBeer = RootBeer(context.applicationContext)
+class RuntimeSecurityChecker(
+    private val context: Context,
+    private val rootBeer: RootBeer = RootBeer(context.applicationContext)
+) {
 
     /**
      * 現在の実行環境が安全かどうかを判定する。
