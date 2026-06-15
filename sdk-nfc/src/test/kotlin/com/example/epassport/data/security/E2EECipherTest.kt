@@ -53,6 +53,22 @@ class E2EECipherTest {
     }
 
     @Test
+    fun decrypt_withE2EECipher_returnsPlaintext() {
+        val plaintext = "sensitive passport data".toByteArray(Charsets.UTF_8)
+        val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+
+        val jwe = E2EECipher.encrypt(plaintext, keyPair.public)
+        val decrypted = E2EECipher.decrypt(jwe, keyPair.private)
+
+        assertArrayEquals(plaintext, decrypted)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun decrypt_invalidFormat_throws() {
+        E2EECipher.decrypt("invalid.jwe", KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair().private)
+    }
+
+    @Test
     fun encrypt_differentRuns_produceDifferentJwe() {
         val plaintext = "sensitive passport data".toByteArray(Charsets.UTF_8)
         val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()

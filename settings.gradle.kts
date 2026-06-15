@@ -16,4 +16,5 @@ rootProject.name = "EPassportNfcSdk"
 include(":sdk-nfc")
 include(":sdk-ocr")
 include(":app")
+include(":server")
 

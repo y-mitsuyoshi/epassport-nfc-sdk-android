@@ -1,5 +1,6 @@
 package com.example.epassport.data.security
 
+import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.Security
@@ -70,7 +71,48 @@ object E2EECipher {
         return "$encodedHeader.$encodedEncryptedKey.$encodedIv.$encodedCiphertext.$encodedTag"
     }
 
+    /**
+     * JWE Compact Serialization 風の文字列をサーバー秘密鍵で復号する。
+     *
+     * @param jwe JWE Compact Serialization 風の文字列
+     * @param serverPrivateKey サーバーの RSA 秘密鍵
+     * @return 平文データ
+     */
+    fun decrypt(jwe: String, serverPrivateKey: PrivateKey): ByteArray {
+        val parts = jwe.split(".")
+        if (parts.size != 5) {
+            throw IllegalArgumentException("Invalid JWE format: expected 5 parts, got ${parts.size}")
+        }
+
+        val encryptedKey = base64UrlDecode(parts[1])
+        val iv = base64UrlDecode(parts[2])
+        val ciphertext = base64UrlDecode(parts[3])
+        val authTag = base64UrlDecode(parts[4])
+
+        // 1. Decrypt AES key with RSA-OAEP-SHA256
+        val keyCipher = Cipher.getInstance("RSA/ECB/OAEPwithSHA256andMGF1Padding", "BC")
+        keyCipher.init(Cipher.DECRYPT_MODE, serverPrivateKey)
+        val aesKey = keyCipher.doFinal(encryptedKey)
+
+        try {
+            // 2. Decrypt ciphertext with AES-256-GCM
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding", "BC")
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                SecretKeySpec(aesKey, "AES"),
+                GCMParameterSpec(GCM_TAG_LENGTH, iv)
+            )
+            return cipher.doFinal(ciphertext + authTag)
+        } finally {
+            aesKey.fill(0)
+        }
+    }
+
     private fun base64UrlEncode(data: ByteArray): String {
         return Base64.UrlSafe.encode(data)
+    }
+
+    private fun base64UrlDecode(data: String): ByteArray {
+        return Base64.UrlSafe.decode(data)
     }
 }
