@@ -64,4 +64,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+
+    // EncryptedSharedPreferences for secure local storage of sensitive data
+    implementation(libs.androidx.security.crypto)
 }

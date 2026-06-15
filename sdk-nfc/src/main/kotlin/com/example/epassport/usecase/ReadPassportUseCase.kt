@@ -48,6 +48,8 @@ class ReadPassportUseCase(
             // 2. Authenticate (BAC)
             onProgress(ReadProgress.AUTHENTICATING)
             val bacKey = mrzData.deriveBacKeys()
+            // MRZ 情報は BAC 鍵導出後に不要となるため、認証後にゼロクリアする。
+            mrzData.clear()
             val secureTransceiver = try {
                 authenticator.authenticate(transceiver, bacKey)
             } finally {

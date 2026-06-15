@@ -269,6 +269,12 @@ class SecureMessaging(
         var dataField: ByteArray? = null
 
         when {
+            // Extended Lc + data APDU is not supported: [CLA INS P1 P2 0x00 LcHi LcLo data [LeHi LeLo]]
+            command.size > 7 && (command[4].toInt() and 0xFF) == 0x00 -> {
+                throw IllegalArgumentException(
+                    "Extended Lc+data APDU is not supported by this SecureMessaging implementation"
+                )
+            }
             // Extended APDU: Lcなし、2バイトLe。command[4]=0x00 がExtendedの目印。
             command.size == 7 && (command[4].toInt() and 0xFF) == 0x00 -> {
                 val leRaw = ((command[5].toInt() and 0xFF) shl 8) or (command[6].toInt() and 0xFF)

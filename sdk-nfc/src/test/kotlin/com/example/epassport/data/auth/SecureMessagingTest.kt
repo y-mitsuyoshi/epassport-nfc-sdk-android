@@ -80,6 +80,19 @@ class SecureMessagingTest {
         assertNull(result.dataField)
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun parseApdu_extendedLcData_throwsIllegalArgumentException() {
+        // Extended Lc+data APDU is unsupported and must throw before array access errors.
+        // [CLA, INS, P1, P2, 0x00, LcHi, LcLo, ...data...]
+        val cmd = byteArrayOf(
+            0x00.toByte(), 0xA4.toByte(), 0x04.toByte(), 0x0C.toByte(),
+            0x00.toByte(), // Extended marker
+            0x00.toByte(), 0x03.toByte(), // Lc = 3
+            0x01.toByte(), 0x02.toByte(), 0x03.toByte()
+        )
+        createSm().parseApdu(cmd)
+    }
+
     // ──────────────────────────────────────────────────
     // DO97 エンコードの検証
     // ──────────────────────────────────────────────────

@@ -37,7 +37,7 @@ class ReadPassportUseCaseTest {
 
     @Test
     fun execute_success_returnsPassportData() { runBlocking {
-        val mrzData = MrzData("L898902C<", "690806", "940623")
+        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
         val secureTransceiver = mockk<NfcTransceiver>()
         val mockDg1 = mockk<Dg1Data>()
         val mockDg2 = mockk<Dg2Data>()
@@ -71,7 +71,7 @@ class ReadPassportUseCaseTest {
 
     @Test(expected = AuthenticationException::class)
     fun execute_authFailure_throwsException() { runBlocking {
-        val mrzData = MrzData("L898902C<", "690806", "940623")
+        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
         
         coEvery { authenticator.authenticate(transceiver, any()) } throws AuthenticationException("Fail")
 
@@ -88,14 +88,14 @@ class ReadPassportUseCaseTest {
 
     @Test(expected = AuthenticationException::class)
     fun execute_authThrowsEPassportException_rethrowsOriginalException() { runBlocking {
-        val mrzData = MrzData("L898902C<", "690806", "940623")
+        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
         coEvery { authenticator.authenticate(transceiver, any()) } throws AuthenticationException("Fail")
         useCase.execute(transceiver, mrzData)
     } }
 
     @Test
     fun execute_genericException_isWrappedInEPassportException() { runBlocking {
-        val mrzData = MrzData("L898902C<", "690806", "940623")
+        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
         val secureTransceiver = mockk<NfcTransceiver>()
         coEvery { authenticator.authenticate(transceiver, any()) } returns secureTransceiver
         coEvery { reader.readDg1(secureTransceiver) } throws RuntimeException("Unexpected runtime error")

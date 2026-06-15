@@ -1,8 +1,11 @@
 package com.example.epassport.domain.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * DG1（MRZ テキスト情報）をパースした結果。
  */
+@Serializable
 data class Dg1Data(
     val documentCode: String,
     val issuingState: String,

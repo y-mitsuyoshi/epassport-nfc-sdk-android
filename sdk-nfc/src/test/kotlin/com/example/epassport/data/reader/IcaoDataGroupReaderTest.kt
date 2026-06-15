@@ -179,6 +179,37 @@ class IcaoDataGroupReaderTest {
     } }
 
     @Test(expected = EPassportException::class)
+    fun readDataGroup_iterationLimitExceeded_throws() { runBlocking {
+        val transceiver = mockk<NfcTransceiver>(relaxed = true)
+        coEvery { transceiver.isExtendedLengthSupported } returns false
+
+        coEvery { transceiver.transceive(any()) } answers {
+            val cmd = arg<ByteArray>(0)
+            when (cmd[1].toInt() and 0xFF) {
+                0xA4 -> byteArrayOf(0x90.toByte(), 0x00.toByte())
+                0xB0 -> {
+                    val offset = ((cmd[2].toInt() and 0xFF) shl 8) or (cmd[3].toInt() and 0xFF)
+                    val le = cmd[4].toInt() and 0xFF
+                    if (offset == 0 && le == 8) {
+                        // sequenceLength = 1 + 3 + 2000 = 2004
+                        byteArrayOf(
+                            0x61, 0x82.toByte(), 0x07, 0xD0.toByte(), 0x00, 0x00, 0x00, 0x00,
+                            0x90.toByte(), 0x00.toByte()
+                        )
+                    } else {
+                        // Return only 1 byte per read to force many iterations
+                        byteArrayOf(0xAA.toByte(), 0x90.toByte(), 0x00.toByte())
+                    }
+                }
+                else -> byteArrayOf(0x90.toByte(), 0x00.toByte())
+            }
+        }
+
+        val reader = IcaoDataGroupReader()
+        reader.readDataGroup(transceiver, byteArrayOf(0x01, 0x01))
+    } }
+
+    @Test(expected = EPassportException::class)
     fun readDataGroup_emptyDataResponse_preventsInfiniteLoop() { runBlocking {
         val transceiver = mockk<NfcTransceiver>(relaxed = true)
         coEvery { transceiver.isExtendedLengthSupported } returns true

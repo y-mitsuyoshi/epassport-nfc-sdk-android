@@ -13,18 +13,19 @@ class MrzDataTest {
 
     @Test
     fun computeCheckDigit_isValid() {
-        val mrzData = MrzData("L898902C<", "690806", "940623")
-        
+        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
+
         // As per ICAO 9303 Part 11 Appendix D.1
-        assertEquals(3, mrzData.computeCheckDigit("L898902C<"))
-        assertEquals(1, mrzData.computeCheckDigit("690806"))
-        assertEquals(6, mrzData.computeCheckDigit("940623"))
+        assertEquals(3, mrzData.computeCheckDigit("L898902C<".toCharArray()))
+        assertEquals(1, mrzData.computeCheckDigit("690806".toCharArray()))
+        assertEquals(6, mrzData.computeCheckDigit("940623".toCharArray()))
+        mrzData.clear()
     }
 
     @Test
     fun deriveBacKeySeed_matchesIcaoAppendixD() {
-        val mrzData = MrzData("L898902C<", "690806", "940623")
-        
+        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
+
         val kSeed = mrzData.deriveBacKeySeed()
         // ICAO 9303 Part 11 D.2:
         val expectedKSeed = byteArrayOf(
@@ -34,11 +35,13 @@ class MrzDataTest {
             0xDF.toByte(), 0x6B.toByte(), 0xFB.toByte(), 0xAE.toByte()
         )
         assertArrayEquals(expectedKSeed, kSeed)
+        kSeed.fill(0)
+        mrzData.clear()
     }
 
     @Test
     fun deriveBacKeys_matchesIcaoAppendixD() {
-        val mrzData = MrzData("L898902C<", "690806", "940623")
+        val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
         val bacKey = mrzData.deriveBacKeys()
 
         val expectedKEnc = byteArrayOf(
@@ -54,14 +57,16 @@ class MrzDataTest {
             0x4C.toByte(), 0x76.toByte(), 0x08.toByte(), 0x9D.toByte(),
             0xCE.toByte(), 0x13.toByte(), 0x15.toByte(), 0x43.toByte()
         )
-        
+
         assertArrayEquals(expectedKEnc, bacKey.encKey)
         assertArrayEquals(expectedKMac, bacKey.macKey)
+        bacKey.clear()
+        mrzData.clear()
     }
 
     @Test
     fun deriveBacKeys_yumaPassport() {
-        val mrzData = MrzData("TR6930600", "901008", "261017")
+        val mrzData = MrzData("TR6930600".toCharArray(), "901008".toCharArray(), "261017".toCharArray())
         val bacKey = mrzData.deriveBacKeys()
 
         val expectedKEnc = byteArrayOf(
@@ -77,8 +82,27 @@ class MrzDataTest {
             0xAB.toByte(), 0x61.toByte(), 0x0E.toByte(), 0xB6.toByte(),
             0x92.toByte(), 0x79.toByte(), 0xDC.toByte(), 0xB5.toByte()
         )
-        
+
         assertArrayEquals(expectedKEnc, bacKey.encKey)
         assertArrayEquals(expectedKMac, bacKey.macKey)
+        bacKey.clear()
+        mrzData.clear()
+    }
+
+    @Test
+    fun clear_zeroizesAllFields() {
+        val docNum = "L898902C<".toCharArray()
+        val dob = "690806".toCharArray()
+        val doe = "940623".toCharArray()
+        val mrzData = MrzData(docNum, dob, doe)
+
+        mrzData.clear()
+
+        assertEquals('\u0000', mrzData.documentNumber[0])
+        assertEquals('\u0000', mrzData.dateOfBirth[0])
+        assertEquals('\u0000', mrzData.dateOfExpiry[0])
+        docNum.fill('\u0000')
+        dob.fill('\u0000')
+        doe.fill('\u0000')
     }
 }

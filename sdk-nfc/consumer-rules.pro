@@ -9,3 +9,10 @@
 -keep class com.example.epassport.api.** { *; }
 -keep class com.example.epassport.domain.model.** { *; }
 -keep class com.example.epassport.domain.exception.** { *; }
+
+# リリースビルドでデバッグログ (Log.d / Log.v) を自動削除する
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int d(...);
+}

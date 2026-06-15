@@ -92,6 +92,24 @@ class CryptoUtilsTest {
     }
 
     @Test
+    fun calculateMac_16ByteKey_matches24ByteExpandedKey() {
+        // ISO9797-1 Algorithm 3 (Retail MAC) with 2-key 3DES:
+        // a 16-byte key should be equivalent to K1 || K2 || K1 (24 bytes).
+        val key16 = ByteArray(16) { (it + 1).toByte() }
+        val key24 = key16 + key16.copyOfRange(0, 8)
+        val data = ByteArray(16) { 0x55.toByte() }
+
+        val mac16 = CryptoUtils.calculateMac(key16, data)
+        val mac24 = CryptoUtils.calculateMac(key24, data)
+
+        assertArrayEquals(
+            "16-byte key must produce the same MAC as the equivalent 24-byte K1||K2||K1 key",
+            mac24,
+            mac16
+        )
+    }
+
+    @Test
     fun pad_addsCorrectPadding() {
         // Data of 4 bytes → should be padded to 8 bytes (80 00 00 00)
         val data = byteArrayOf(0x01, 0x02, 0x03, 0x04)

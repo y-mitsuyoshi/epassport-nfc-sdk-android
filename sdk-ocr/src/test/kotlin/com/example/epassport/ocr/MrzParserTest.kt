@@ -49,9 +49,9 @@ class MrzParserTest {
 
     @Test
     fun `parse TD1 standard format extracts fields correctly`() {
-        // I<UTO (5-char prefix) + D23145890 (9) + 7 (check) + remaining
+        // TD1 layout: line2 = optional(6) DOB(6) CD sex(1) DOE(6) CD optional(6) CD reserved(2)
         val line1 = "I<UTOD231458907<<<<<<<<<<<<<<<"
-        val line2 = "9408125M1204158D<<1310107<<<<<"
+        val line2 = "<<<<<<9408125M1204158UTO<<<1<<"
         val line3 = "MUSTERMANN<<ERIKA<<<<<<<<<<<<<"
         val result = MrzParser.parse("$line1\n$line2\n$line3")
         assertEquals("D23145890", result.documentNumber)
@@ -62,7 +62,7 @@ class MrzParserTest {
     @Test
     fun `parse TD1 with diplomatic D prefix`() {
         val line1 = "D<UTOD231458907<<<<<<<<<<<<<<<"
-        val line2 = "9408125M1204158D<<1310107<<<<<"
+        val line2 = "<<<<<<9408125M1204158UTO<<<1<<"
         val line3 = "MUSTERMANN<<ERIKA<<<<<<<<<<<<<"
         val result = MrzParser.parse("$line1\n$line2\n$line3")
         assertEquals("D23145890", result.documentNumber)
@@ -72,8 +72,8 @@ class MrzParserTest {
 
     @Test
     fun `parse TD1 strips filler less-than from document number`() {
-        val line1 = "I<UTO<<123456<7<<<<<<<<<<<<<<<"
-        val line2 = "9408125M1204158D<<1310107<<<<<"
+        val line1 = "I<UTO<<123456<1<<<<<<<<<<<<<<<"
+        val line2 = "<<<<<<9408125M1204158UTO<<<1<<"
         val line3 = "MUSTERMANN<<ERIKA<<<<<<<<<<<<<"
         val result = MrzParser.parse("$line1\n$line2\n$line3")
         assertEquals("123456", result.documentNumber)

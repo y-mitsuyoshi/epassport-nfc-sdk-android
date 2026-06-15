@@ -1,11 +1,12 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
     id("jacoco")
 }
 
 android {
-    namespace = "com.example.epassport"
+    namespace = "com.example.epassport.nfc"
     compileSdk = 34
 
     defaultConfig {
@@ -47,6 +48,13 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.bouncycastle.prov)
+    implementation(libs.bouncycastle.pkix)
+
+    // Runtime Application Self-Protection (RASP): root, emulator, debug detection
+    implementation(libs.rootbeer.lib)
+
+    // JSON serialization for E2EE server transfer payloads
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
