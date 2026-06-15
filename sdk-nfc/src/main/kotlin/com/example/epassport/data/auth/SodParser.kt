@@ -116,4 +116,33 @@ object SodParser {
         }
         return true
     }
+
+    /**
+     * SOD の CMS 署名を検証する。
+     *
+     * @param sodBytes EF.SOD ファイルの生バイト列
+     * @param trustStore 信頼する CSCA 証明書を含む [CscaTrustStore]
+     * @return 署名が検証できれば true
+     */
+    fun verifySodSignature(sodBytes: ByteArray, trustStore: CscaTrustStore): Boolean {
+        return trustStore.verifySodSignature(sodBytes)
+    }
+
+    /**
+     * Passive Authentication を実行する。
+     *
+     * SOD の署名検証と、各 DG のハッシュ照合を両方行う。
+     *
+     * @param sodBytes EF.SOD ファイルの生バイト列
+     * @param dataGroups 実際に読み取った DG 番号からバイト列へのマップ
+     * @param trustStore 信頼する CSCA 証明書を含む [CscaTrustStore]
+     * @return 署名検証とハッシュ照合の両方が成功すれば true
+     */
+    fun verifyPassiveAuthentication(
+        sodBytes: ByteArray,
+        dataGroups: Map<Int, ByteArray>,
+        trustStore: CscaTrustStore
+    ): Boolean {
+        return verifySodSignature(sodBytes, trustStore) && verifyHashes(sodBytes, dataGroups)
+    }
 }
