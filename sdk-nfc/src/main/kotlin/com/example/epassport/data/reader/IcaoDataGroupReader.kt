@@ -28,6 +28,14 @@ class IcaoDataGroupReader : DataGroupReader {
         return readDataGroup(transceiver, byteArrayOf(0x01, 0x0F)) // DG15 File ID
     }
 
+    override suspend fun readDg14(transceiver: NfcTransceiver): ByteArray {
+        return readDataGroup(transceiver, byteArrayOf(0x01, 0x0E)) // DG14 File ID
+    }
+
+    override suspend fun readSod(transceiver: NfcTransceiver): ByteArray {
+        return readDataGroup(transceiver, byteArrayOf(0x01, 0x1D)) // EF.SOD File ID
+    }
+
     override suspend fun performActiveAuthentication(
         transceiver: NfcTransceiver,
         challenge: ByteArray
@@ -78,19 +86,26 @@ class IcaoDataGroupReader : DataGroupReader {
         
         if (transceiver.isExtendedLengthSupported) {
             // Extended APDU: 最大 65536 バイトずつ高速読み出し
+            var iterations = 0
+            val maxIterations = 1000
             while (remainingData > 0) {
+                if (++iterations > maxIterations) {
+                    throw EPassportException(
+                        "Exceeded maximum read iterations ($maxIterations) during Extended Read Binary"
+                    )
+                }
                 // le=0 は ISO7816-4 で「65536 バイト」を意味する
                 val chunkLe = if (remainingData > 65536) 0 else remainingData
                 val readCmd = ApduCommand.readBinaryExtended(offset, chunkLe)
                 val response = transceiver.transceive(readCmd)
                 checkStatus(response)
                 val data = response.copyOfRange(0, response.size - 2)
-                
+
                 // 安全弁: NFCチップが9000成功応答を返したにも関わらずボディが空の場合のフリーズ防止
                 if (data.isEmpty()) {
                     throw EPassportException("NFC card returned empty data during Extended Read Binary")
                 }
-                
+
                 outputStream.write(data)
                 offset += data.size
                 remainingData -= data.size
@@ -99,7 +114,14 @@ class IcaoDataGroupReader : DataGroupReader {
             // chunk reading (下位互換用：従来通り255バイトずつ細切れに読み出す)
             val maxLe = 255 // extended Le might fail on some passports, sticking to short LE in BAC
 
+            var iterations = 0
+            val maxIterations = 1000
             while (remainingData > 0) {
+                if (++iterations > maxIterations) {
+                    throw EPassportException(
+                        "Exceeded maximum read iterations ($maxIterations) during Short APDU Read Binary"
+                    )
+                }
                 if (offset >= 32768) {
                     throw EPassportException(
                         "Short APDU fallback does not support reading files larger than 32KB (offset=$offset)"
@@ -111,12 +133,12 @@ class IcaoDataGroupReader : DataGroupReader {
                 checkStatus(response)
 
                 val data = response.copyOfRange(0, response.size - 2)
-                
+
                 // 安全弁: 無限ループフリーズ防止
                 if (data.isEmpty()) {
                     throw EPassportException("NFC card returned empty data during Short APDU Read Binary")
                 }
-                
+
                 outputStream.write(data)
 
                 offset += data.size // Update offset by actual read data size

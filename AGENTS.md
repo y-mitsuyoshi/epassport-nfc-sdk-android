@@ -5,7 +5,7 @@
 - **Type**: Android multi-module project (libraries + sample app)
 - **Modules**: `:sdk-nfc`, `:sdk-ocr`, `:app`
 - **Build Tool**: Gradle with Kotlin DSL
-- **Test Framework**: JUnit + MockK (`sdk-nfc`), JUnit (`sdk-ocr` pending)
+- **Test Framework**: JUnit + MockK + Robolectric (`sdk-nfc`), JUnit (`sdk-ocr` pending)
 
 ## Quality Gates & Git Hooks
 

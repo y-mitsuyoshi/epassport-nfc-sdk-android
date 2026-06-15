@@ -1,10 +1,12 @@
 package com.example.epassport.domain.model
 
-import android.util.Base64
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * サーバー側でアクティブ認証（クローン検知）を検証するために収集された生データ。
  */
+@OptIn(ExperimentalEncodingApi::class)
 data class ActiveAuthenticationData(
     val publicKeyInfo: ByteArray,  // DG15から取得した公開鍵のASN.1 DERエンコード生バイト
     val challenge: ByteArray,      // 署名に使用した乱数（8バイト）
@@ -15,9 +17,9 @@ data class ActiveAuthenticationData(
      */
     fun toBase64Map(): Map<String, String> {
         return mapOf(
-            "publicKeyInfo" to Base64.encodeToString(publicKeyInfo, Base64.NO_WRAP),
-            "challenge" to Base64.encodeToString(challenge, Base64.NO_WRAP),
-            "signature" to Base64.encodeToString(signature, Base64.NO_WRAP)
+            "publicKeyInfo" to Base64.encode(publicKeyInfo),
+            "challenge" to Base64.encode(challenge),
+            "signature" to Base64.encode(signature)
         )
     }
 
@@ -39,5 +41,12 @@ data class ActiveAuthenticationData(
         result = 31 * result + challenge.contentHashCode()
         result = 31 * result + signature.contentHashCode()
         return result
+    }
+
+    /** メモリからのゼロクリア */
+    fun clear() {
+        publicKeyInfo.fill(0)
+        challenge.fill(0)
+        signature.fill(0)
     }
 }

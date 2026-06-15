@@ -52,9 +52,30 @@ class Dg1ParserTest {
     @Test
     fun parse_td1_validMrz_returnsCorrectFields() {
         // TD1 format: 3 lines x 30 chars = 90 chars
+        // Line 2 layout: optional(6) DOB(6) CD sex(1) DOE(6) CD optional(6) CD reserved(2)
         val mrz = "I<UTOD231458907<<<<<<<<<<<<<<<" +
-                  "7408122F1204159UTO<<<<<<<<<<<6" +
+                  "<<<<<<7408122F1204159UTO<<<1<<" +
                   "ERIKSSON<<ANNA<MARIA<<<<<<<<<<"
+        val tlv = buildDg1Tlv(mrz)
+
+        val result = Dg1Parser.parse(tlv)
+
+        assertEquals("I", result.documentCode)
+        assertEquals("UTO", result.issuingState)
+        assertEquals("D23145890", result.documentNumber)
+        assertEquals("740812", result.dateOfBirth)
+        assertEquals("ERIKSSON", result.primaryIdentifier)
+        assertEquals("ANNA MARIA", result.secondaryIdentifier)
+        assertEquals("F", result.sex)
+        assertEquals("120415", result.dateOfExpiry)
+        assertEquals("", result.nationality) // TD1 does not contain a dedicated nationality field
+    }
+
+    @Test
+    fun parse_td2_validMrz_returnsCorrectFields() {
+        // TD2 format: 2 lines x 36 chars = 72 chars
+        val mrz = "I<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<"  +
+                  "D231458907UTO7408122F1204159<<<<<<<0"
         val tlv = buildDg1Tlv(mrz)
 
         val result = Dg1Parser.parse(tlv)
@@ -70,24 +91,23 @@ class Dg1ParserTest {
         assertEquals("UTO", result.nationality)
     }
 
-    @Test
-    fun parse_td2_validMrz_returnsCorrectFields() {
-        // TD2 format: 2 lines x 36 chars = 72 chars
-        val mrz = "I<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<"  +
-                  "D231458907UTO7408122F1204159<<<<<<<6"
+    @Test(expected = InvalidDataException::class)
+    fun parse_td3_invalidCheckDigit_throwsException() {
+        // TD3 with a corrupted document number check digit (3 -> 0)
+        val mrz = "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<" +
+                  "L898902C<0UTO6908061F9406236ZE184226B<<<<<14"
         val tlv = buildDg1Tlv(mrz)
+        Dg1Parser.parse(tlv)
+    }
 
-        val result = Dg1Parser.parse(tlv)
-
-        assertEquals("I", result.documentCode)
-        assertEquals("UTO", result.issuingState)
-        assertEquals("D23145890", result.documentNumber)
-        assertEquals("740812", result.dateOfBirth)
-        assertEquals("ERIKSSON", result.primaryIdentifier)
-        assertEquals("ANNA MARIA", result.secondaryIdentifier)
-        assertEquals("F", result.sex)
-        assertEquals("120415", result.dateOfExpiry)
-        assertEquals("UTO", result.nationality)
+    @Test(expected = InvalidDataException::class)
+    fun parse_td1_invalidCheckDigit_throwsException() {
+        // TD1 with a corrupted DOB check digit (2 -> 0)
+        val mrz = "I<UTOD231458907<<<<<<<<<<<<<<<" +
+                  "<<<<<<7408120F1204159UTO<<<<<<1<<" +
+                  "ERIKSSON<<ANNA<MARIA<<<<<<<<<<"
+        val tlv = buildDg1Tlv(mrz)
+        Dg1Parser.parse(tlv)
     }
 
     @Test(expected = InvalidDataException::class)

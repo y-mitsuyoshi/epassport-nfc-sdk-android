@@ -16,6 +16,16 @@ interface DataGroupReader {
     suspend fun readDg15(transceiver: NfcTransceiver): ByteArray
 
     /**
+     * DG14 (Security Infos: Chip Authentication パラメータ) を生バイトとして読み取ります。
+     */
+    suspend fun readDg14(transceiver: NfcTransceiver): ByteArray
+
+    /**
+     * SOD (Document Security Object: Passive Authentication 用) を生バイトとして読み取ります。
+     */
+    suspend fun readSod(transceiver: NfcTransceiver): ByteArray
+
+    /**
      * チップに対して INTERNAL AUTHENTICATE を送信し、署名（レスポンス）を取得します。
      */
     suspend fun performActiveAuthentication(transceiver: NfcTransceiver, challenge: ByteArray): ByteArray

@@ -16,6 +16,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
@@ -33,6 +34,7 @@ import com.example.epassport.ocr.CameraMrzScanner
 import com.example.epassport.ocr.MrzParser
 import com.example.epassport.ocr.ai.AiOcrClientFactory
 import com.example.epassport.ocr.ai.AiOcrConfig
+import com.example.epassport.app.security.EncryptedSecureApiKeyProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,15 +76,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 画面キャプチャ・録画・画面共有をOSレベルで防止 (FLAG_SECURE)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
 
         // ローカルテスト用: BuildConfig からAPIキーとモデルを取得（開発時のみ使用）
-        // 本番運用では SecureApiKeyProvider を実装し、サーバー動的配信から安全に取得すること。
+        // 取得したAPIキーは EncryptedSharedPreferences に暗号化保存し、平文のまま保持しない。
+        // 本番運用では SecureApiKeyProvider をサーバー動的配信用に差し替えること。
         try {
             val modelName = if (BuildConfig.AI_OCR_MODEL.isNotBlank()) BuildConfig.AI_OCR_MODEL else "gemini-1.5-flash"
-            val aiOcrConfig = AiOcrConfig.forLocalTesting(
+            val apiKeyProvider = EncryptedSecureApiKeyProvider(this).apply {
+                if (BuildConfig.AI_OCR_API_KEY.isNotBlank()) {
+                    storeApiKey(BuildConfig.AI_OCR_API_KEY)
+                }
+            }
+            val aiOcrConfig = AiOcrConfig(
                 vendor = "google_ai_studio",
-                apiKey = BuildConfig.AI_OCR_API_KEY,
+                apiKeyProvider = apiKeyProvider,
                 model = modelName
             )
             val aiOcrClient = AiOcrClientFactory.create(aiOcrConfig)
@@ -244,7 +255,7 @@ class MainActivity : ComponentActivity() {
                         showStatus("エラー：MRZ情報を入力してください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
                         return@setOnClickListener
                     }
-                    scannedMrzData = MrzData(docNo, dob, doe)
+                    scannedMrzData = MrzData(docNo.toCharArray(), dob.toCharArray(), doe.toCharArray())
                     triggerScanReady()
                 } else {
                     // カメラモードの時は撮影ボタン（シャッター）として機能する
@@ -408,7 +419,11 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     try {
                         val parsed = MrzParser.parse(mrzText)
-                        scannedMrzData = MrzData(parsed.documentNumber, parsed.dateOfBirth, parsed.dateOfExpiry)
+                        scannedMrzData = MrzData(
+                            parsed.documentNumber.toCharArray(),
+                            parsed.dateOfBirth.toCharArray(),
+                            parsed.dateOfExpiry.toCharArray()
+                        )
                         
                         // Automatically transit to NFC scan ready
                         triggerScanReady()
@@ -550,7 +565,7 @@ class MainActivity : ComponentActivity() {
         val mrz = scannedMrzData ?: return
 
         activityScope.launch {
-            val result = EPassportReader.read(tag, mrz) { progress ->
+            val result = EPassportReader.read(this@MainActivity, tag, mrz) { progress ->
                 activityScope.launch(Dispatchers.Main) {
                     when (progress) {
                         ReadProgress.CONNECTING -> showStatus("NFC接続中...", Color.parseColor("#2563EB"), Color.parseColor("#DBEAFE"))
