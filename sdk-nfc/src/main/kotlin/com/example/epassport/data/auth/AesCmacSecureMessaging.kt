@@ -62,8 +62,20 @@ class AesCmacSecureMessaging(
         val maskedCla = (cla or 0x0C).toByte()
         val header = byteArrayOf(maskedCla, ins.toByte(), p1.toByte(), p2.toByte())
 
-        // Build DO97 (Le)
-        val do97 = byteArrayOf(0x97.toByte(), 0x01.toByte(), 0x00.toByte())
+        // Extract Le from original command to build DO97 dynamically
+        val originalLe = extractLe(command)
+        val do97 = if (originalLe > 0 || command.size <= 5) {
+            if (originalLe > 255) {
+                val leHi = if (originalLe == 65536) 0x00.toByte() else (originalLe ushr 8).toByte()
+                val leLo = if (originalLe == 65536) 0x00.toByte() else (originalLe and 0xFF).toByte()
+                byteArrayOf(0x97.toByte(), 0x02.toByte(), leHi, leLo)
+            } else {
+                val leValue = if (originalLe <= 0) 0x00 else originalLe.toByte()
+                byteArrayOf(0x97.toByte(), 0x01.toByte(), leValue)
+            }
+        } else {
+            null
+        }
 
         // Encrypt DO87 data if present
         var do87: ByteArray? = null
@@ -92,13 +104,22 @@ class AesCmacSecureMessaging(
         // Build DO8E
         val do8e = byteArrayOf(0x8E.toByte(), 0x10.toByte()) + mac
 
-        // Build protected APDU
+        // Build protected APDU with dynamic Le
         val cmdStream = ByteArrayOutputStream()
         cmdStream.write(header)
-        val content = (do87 ?: byteArrayOf()) + do97 + do8e
+        val content = (do87 ?: byteArrayOf()) + (do97 ?: byteArrayOf()) + do8e
         cmdStream.write(content.size)
         cmdStream.write(content)
-        cmdStream.write(0x00) // Le
+        val responseLe = if (originalLe > 0) {
+            if (originalLe > 255) {
+                byteArrayOf(0x00, 0x00)
+            } else {
+                byteArrayOf(originalLe.toByte())
+            }
+        } else {
+            byteArrayOf(0x00)
+        }
+        cmdStream.write(responseLe)
 
         val response = delegate.transceive(cmdStream.toByteArray())
 
@@ -218,6 +239,34 @@ class AesCmacSecureMessaging(
             length <= 0x7F -> byteArrayOf(length.toByte())
             length <= 0xFF -> byteArrayOf(0x81.toByte(), length.toByte())
             else -> byteArrayOf(0x82.toByte(), (length ushr 8).toByte(), (length and 0xFF).toByte())
+        }
+    }
+
+    /**
+     * Extract the expected Le (response length) from the original APDU command.
+     * Supports short (5 byte) and extended (7 byte) APDU formats.
+     */
+    private fun extractLe(command: ByteArray): Int {
+        return when {
+            // Extended APDU: [CLA INS P1 P2 0x00 LeHi LeLo]
+            command.size >= 7 && (command[4].toInt() and 0xFF) == 0x00 -> {
+                val leRaw = ((command[5].toInt() and 0xFF) shl 8) or (command[6].toInt() and 0xFF)
+                if (leRaw == 0) 65536 else leRaw
+            }
+            // Short APDU with Lc + data + Le: [CLA INS P1 P2 Lc data Le]
+            command.size >= 6 -> {
+                val lc = command[4].toInt() and 0xFF
+                if (command.size > 5 + lc) {
+                    command[5 + lc].toInt() and 0xFF
+                } else {
+                    -1
+                }
+            }
+            // Short APDU with Le only: [CLA INS P1 P2 Le]
+            command.size == 5 -> {
+                command[4].toInt() and 0xFF
+            }
+            else -> -1
         }
     }
 }

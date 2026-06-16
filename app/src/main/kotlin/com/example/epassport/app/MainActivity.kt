@@ -260,7 +260,8 @@ class MainActivity : ComponentActivity() {
                     dob = convertFullWidthToHalfWidth(dob)
                     doe = convertFullWidthToHalfWidth(doe)
 
-                    // Keep only alphanumeric for passport number, and digits for dates
+                    // Keep only valid MRZ characters for passport number, and digits for dates
+                    val hadFiller = docNo.contains('<')
                     docNo = docNo.filter { it.isLetterOrDigit() }
                     dob = dob.filter { it.isDigit() }
                     doe = doe.filter { it.isDigit() }
@@ -268,6 +269,21 @@ class MainActivity : ComponentActivity() {
                     // Truncate document number to 9 characters if check digit was included
                     if (docNo.length > 9) {
                         docNo = docNo.substring(0, 9)
+                    }
+
+                    // Detect and strip the check digit when '<' filler was present
+                    // or when a 9-char input ends with a digit that matches the expected check digit.
+                    // Example: user types "L898902C<3" → filter removes '<' → "L898902C3" (9 chars)
+                    // The '3' is the check digit for field "L898902C<", not part of the document number.
+                    if (docNo.length == 9 && docNo.last().isDigit()) {
+                        val first8 = docNo.substring(0, 8)
+                        val expectedCd = MrzData.computeCheckDigitStatic((first8 + '<').toCharArray())
+                        if (docNo.last().digitToInt() == expectedCd) {
+                            docNo = first8 + '<'
+                        } else if (hadFiller) {
+                            // '<' was present but check digit didn't match — keep first 8 chars
+                            docNo = first8 + '<'
+                        }
                     }
 
                     // Convert YYYYMMDD to YYMMDD
@@ -661,7 +677,6 @@ class MainActivity : ComponentActivity() {
                     
                     val hasAA = passportData.activeAuthenticationData != null
                     addDetailRow("🔒 ACTIVE AUTHENTICATION / 真贋検証", if (hasAA) "SUCCESS (本物判定)" else "NOT SUPPORTED (非対応)")
-                    addDetailRow("🔒 DERIVED MRZ INFO / 鍵生成用のMRZ情報", mrz.mrzInformation)
 
                     resultCard.visibility = View.VISIBLE
                 }
