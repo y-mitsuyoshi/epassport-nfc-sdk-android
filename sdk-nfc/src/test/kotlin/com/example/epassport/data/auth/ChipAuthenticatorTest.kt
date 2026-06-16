@@ -95,7 +95,7 @@ class ChipAuthenticatorTest {
         var offset = 0
         // Skip 0x7C wrapper
         offset++
-        val (outerLen, outerLenBytes) = parseLength(data, offset)
+        val (_, outerLenBytes) = parseLength(data, offset)
         offset += outerLenBytes
         // Skip 0x80 tag
         offset++

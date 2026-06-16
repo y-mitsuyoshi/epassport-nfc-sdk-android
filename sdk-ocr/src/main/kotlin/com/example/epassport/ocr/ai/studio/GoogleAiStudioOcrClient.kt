@@ -104,6 +104,10 @@ class GoogleAiStudioOcrClient(private val config: AiOcrConfig) : AiOcrClient {
                     }
                 }
             }
+            putJsonObject("generationConfig") {
+                put("temperature", 0.0) // 認識のゆらぎを無くし決定論的結果を得る
+                put("responseMimeType", "text/plain")
+            }
         }
         return payload.toString()
     }
@@ -113,9 +117,14 @@ class GoogleAiStudioOcrClient(private val config: AiOcrConfig) : AiOcrClient {
         private const val DEFAULT_MODEL = "gemini-1.5-flash"
 
         private val MRZ_PROMPT = """
-            このパスポート画像のMRZ（Machine Readable Zone）を読み取ってください。
-            MRZは通常パスポートの最下部にある2行（または3行）の機械読み取り用テキストです。
-            各行の文字をそのまま正確に返してください。余計な説明や記号は不要です。
+            あなたは高性能なパスポートMRZ（Machine Readable Zone）認識エンジンです。
+            提供されたパスポート画像から、下部にある2行または3行のMRZテキストを正確に読み取ってください。
+            
+            【厳守ルール】
+            1. MRZの各行（通常30, 36, 44文字）のテキストのみを出力してください。
+            2. 出力する文字列に、マークダウンのコードブロック（```）や説明文、挨拶、ヘッダーなどは一切含めないでください。
+            3. 使用文字は大文字（A-Z）、数字（0-9）、および「<」のみです。
+            4. 空白（スペース）が含まれている場合は除去して詰めてください。
         """.trimIndent()
     }
 }

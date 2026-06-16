@@ -155,6 +155,7 @@ class MainActivity : ComponentActivity() {
             text = "手動入力"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
+            filterTouchesWhenObscured = true
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { switchMode(InputMode.MANUAL) }
         }
@@ -163,6 +164,7 @@ class MainActivity : ComponentActivity() {
             text = "カメラOCR"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
+            filterTouchesWhenObscured = true
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { switchMode(InputMode.CAMERA) }
         }
@@ -235,6 +237,7 @@ class MainActivity : ComponentActivity() {
             textSize = 16f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
+            filterTouchesWhenObscured = true
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#2563EB")) // Royal Blue
                 cornerRadius = 24f
@@ -248,13 +251,62 @@ class MainActivity : ComponentActivity() {
             }
             setOnClickListener {
                 if (currentMode == InputMode.MANUAL) {
-                    val docNo = docNoInput.text.toString().trim()
-                    val dob = dobInput.text.toString().trim()
-                    val doe = doeInput.text.toString().trim()
-                    if (docNo.isBlank() || dob.isBlank() || doe.isBlank()) {
-                        showStatus("エラー：MRZ情報を入力してください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+                    var docNo = docNoInput.text.toString().trim().replace(" ", "").uppercase()
+                    var dob = dobInput.text.toString().trim().replace(" ", "")
+                    var doe = doeInput.text.toString().trim().replace(" ", "")
+
+                    // Convert full-width characters to half-width
+                    docNo = convertFullWidthToHalfWidth(docNo)
+                    dob = convertFullWidthToHalfWidth(dob)
+                    doe = convertFullWidthToHalfWidth(doe)
+
+                    // Keep only valid MRZ characters for passport number, and digits for dates
+                    val hadFiller = docNo.contains('<')
+                    docNo = docNo.filter { it.isLetterOrDigit() }
+                    dob = dob.filter { it.isDigit() }
+                    doe = doe.filter { it.isDigit() }
+
+                    // Truncate document number to 9 characters if check digit was included
+                    if (docNo.length > 9) {
+                        docNo = docNo.substring(0, 9)
+                    }
+
+                    // Detect and strip the check digit when '<' filler was present
+                    // or when a 9-char input ends with a digit that matches the expected check digit.
+                    // Example: user types "L898902C<3" → filter removes '<' → "L898902C3" (9 chars)
+                    // The '3' is the check digit for field "L898902C<", not part of the document number.
+                    if (docNo.length == 9 && docNo.last().isDigit()) {
+                        val first8 = docNo.substring(0, 8)
+                        val expectedCd = MrzData.computeCheckDigitStatic((first8 + '<').toCharArray())
+                        if (docNo.last().digitToInt() == expectedCd) {
+                            docNo = first8 + '<'
+                        } else if (hadFiller) {
+                            // '<' was present but check digit didn't match — keep first 8 chars
+                            docNo = first8 + '<'
+                        }
+                    }
+
+                    // Convert YYYYMMDD to YYMMDD
+                    if (dob.length == 8) {
+                        dob = dob.substring(2)
+                    }
+                    if (doe.length == 8) {
+                        doe = doe.substring(2)
+                    }
+
+                    if (docNo.length < 5) {
+                        showStatus("エラー：正しい旅券番号を入力してください（例: TR6930600）", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
                         return@setOnClickListener
                     }
+                    if (dob.length != 6) {
+                        showStatus("エラー：生年月日は6桁（例: 901008）で入力してください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+                        return@setOnClickListener
+                    }
+                    if (doe.length != 6) {
+                        showStatus("エラー：有効期限は6桁（例: 261017）で入力してください", Color.parseColor("#EF4444"), Color.parseColor("#FEE2E2"))
+                        return@setOnClickListener
+                    }
+
                     scannedMrzData = MrzData(docNo.toCharArray(), dob.toCharArray(), doe.toCharArray())
                     triggerScanReady()
                 } else {
@@ -420,10 +472,11 @@ class MainActivity : ComponentActivity() {
                     try {
                         val parsed = MrzParser.parse(mrzText)
                         scannedMrzData = MrzData(
-                            parsed.documentNumber.toCharArray(),
-                            parsed.dateOfBirth.toCharArray(),
-                            parsed.dateOfExpiry.toCharArray()
+                            parsed.documentNumber,
+                            parsed.dateOfBirth,
+                            parsed.dateOfExpiry
                         )
+                        parsed.clear()
                         
                         // Automatically transit to NFC scan ready
                         triggerScanReady()
@@ -478,6 +531,7 @@ class MainActivity : ComponentActivity() {
             setTextColor(Color.parseColor("#F8FAFC")) // Slate 50
             textSize = 15f
             setPadding(24, 24, 24, 24)
+            filterTouchesWhenObscured = true
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#0F172A")) // Slate 900
                 cornerRadius = 16f
@@ -565,7 +619,12 @@ class MainActivity : ComponentActivity() {
         val mrz = scannedMrzData ?: return
 
         activityScope.launch {
-            val result = EPassportReader.read(this@MainActivity, tag, mrz) { progress ->
+            val result = EPassportReader.read(
+                context = this@MainActivity,
+                tag = tag,
+                mrzData = mrz,
+                allowDebug = BuildConfig.DEBUG
+            ) { progress ->
                 activityScope.launch(Dispatchers.Main) {
                     when (progress) {
                         ReadProgress.CONNECTING -> showStatus("NFC接続中...", Color.parseColor("#2563EB"), Color.parseColor("#DBEAFE"))
@@ -618,7 +677,6 @@ class MainActivity : ComponentActivity() {
                     
                     val hasAA = passportData.activeAuthenticationData != null
                     addDetailRow("🔒 ACTIVE AUTHENTICATION / 真贋検証", if (hasAA) "SUCCESS (本物判定)" else "NOT SUPPORTED (非対応)")
-                    addDetailRow("🔒 DERIVED MRZ INFO / 鍵生成用のMRZ情報", mrz.mrzInformation)
 
                     resultCard.visibility = View.VISIBLE
                 }
@@ -701,5 +759,16 @@ class MainActivity : ComponentActivity() {
             "F" -> "FEMALE / 女性"
             else -> "OTHER / その他"
         }
+    }
+
+    private fun convertFullWidthToHalfWidth(input: String): String {
+        return input.map { char ->
+            when (char) {
+                in '０'..'９' -> (char.code - '０'.code + '0'.code).toChar()
+                in 'Ａ'..'Ｚ' -> (char.code - 'Ａ'.code + 'A'.code).toChar()
+                in 'ａ'..'ｚ' -> (char.code - 'ａ'.code + 'a'.code).toChar()
+                else -> char
+            }
+        }.joinToString("")
     }
 }

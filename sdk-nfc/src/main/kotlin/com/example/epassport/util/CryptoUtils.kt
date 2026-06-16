@@ -46,6 +46,9 @@ object CryptoUtils {
 
     /** ISO9797-1 Algorithm 3 MAC ( Retail MAC ) の計算 */
     fun calculateMac(key: ByteArray, data: ByteArray): ByteArray {
+        require(key.size == 16 || key.size == 24) {
+            "Key must be either 16 or 24 bytes long for ISO9797Alg3Mac"
+        }
         val engine = DESEngine()
         val mac = ISO9797Alg3Mac(engine, 64)
         val keyParam = KeyParameter(key)

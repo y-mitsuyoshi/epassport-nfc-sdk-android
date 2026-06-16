@@ -11,7 +11,8 @@ import java.security.PublicKey
 data class PassportData(
     val dg1: Dg1Data,
     val dg2: Dg2Data? = null, // 顔写真が含まれない場合を考慮
-    val activeAuthenticationData: ActiveAuthenticationData? = null
+    val activeAuthenticationData: ActiveAuthenticationData? = null,
+    val verificationResult: PassportVerificationResult? = null
 ) {
     /**
      * TRUSTDOCK サーバーへの転送用にデータを Base64 シリアライズ形式に変換します。

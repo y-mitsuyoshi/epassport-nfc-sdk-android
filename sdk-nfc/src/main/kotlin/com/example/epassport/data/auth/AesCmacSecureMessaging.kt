@@ -7,9 +7,11 @@ import com.example.epassport.util.CryptoUtils
 import org.bouncycastle.crypto.engines.AESEngine
 import org.bouncycastle.crypto.macs.CMac
 import org.bouncycastle.crypto.params.KeyParameter
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.security.MessageDigest
+import java.security.Security
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -28,6 +30,9 @@ class AesCmacSecureMessaging(
 ) : NfcTransceiver, java.io.Closeable {
 
     private val ssc: ByteArray = ssc.copyOf()
+    private val bouncyCastleProvider = BouncyCastleProvider().also {
+        if (Security.getProvider(it.name) == null) Security.addProvider(it)
+    }
 
     override fun close() {
         ksEnc.fill(0)
@@ -57,8 +62,20 @@ class AesCmacSecureMessaging(
         val maskedCla = (cla or 0x0C).toByte()
         val header = byteArrayOf(maskedCla, ins.toByte(), p1.toByte(), p2.toByte())
 
-        // Build DO97 (Le)
-        val do97 = byteArrayOf(0x97.toByte(), 0x01.toByte(), 0x00.toByte())
+        // Extract Le from original command to build DO97 dynamically
+        val originalLe = extractLe(command)
+        val do97 = if (originalLe > 0 || command.size <= 5) {
+            if (originalLe > 255) {
+                val leHi = if (originalLe == 65536) 0x00.toByte() else (originalLe ushr 8).toByte()
+                val leLo = if (originalLe == 65536) 0x00.toByte() else (originalLe and 0xFF).toByte()
+                byteArrayOf(0x97.toByte(), 0x02.toByte(), leHi, leLo)
+            } else {
+                val leValue = if (originalLe <= 0) 0x00 else originalLe.toByte()
+                byteArrayOf(0x97.toByte(), 0x01.toByte(), leValue)
+            }
+        } else {
+            null
+        }
 
         // Encrypt DO87 data if present
         var do87: ByteArray? = null
@@ -66,7 +83,7 @@ class AesCmacSecureMessaging(
             val lc = command[4].toInt() and 0xFF
             val data = command.copyOfRange(5, 5 + lc)
             val paddedData = CryptoUtils.pad(data)
-            val encrypted = Cipher.getInstance("AES/CBC/NoPadding", "BC").apply {
+            val encrypted = Cipher.getInstance("AES/CBC/NoPadding", bouncyCastleProvider).apply {
                 init(Cipher.ENCRYPT_MODE, SecretKeySpec(ksEnc, "AES"), IvParameterSpec(ByteArray(16)))
             }.doFinal(paddedData)
 
@@ -87,13 +104,22 @@ class AesCmacSecureMessaging(
         // Build DO8E
         val do8e = byteArrayOf(0x8E.toByte(), 0x10.toByte()) + mac
 
-        // Build protected APDU
+        // Build protected APDU with dynamic Le
         val cmdStream = ByteArrayOutputStream()
         cmdStream.write(header)
-        val content = (do87 ?: byteArrayOf()) + do97 + do8e
+        val content = (do87 ?: byteArrayOf()) + (do97 ?: byteArrayOf()) + do8e
         cmdStream.write(content.size)
         cmdStream.write(content)
-        cmdStream.write(0x00) // Le
+        val responseLe = if (originalLe > 0) {
+            if (originalLe > 255) {
+                byteArrayOf(0x00, 0x00)
+            } else {
+                byteArrayOf(originalLe.toByte())
+            }
+        } else {
+            byteArrayOf(0x00)
+        }
+        cmdStream.write(responseLe)
 
         val response = delegate.transceive(cmdStream.toByteArray())
 
@@ -142,7 +168,7 @@ class AesCmacSecureMessaging(
                 throw AuthenticationException("Unsupported padding indicator")
             }
             val encrypted = do87Value.copyOfRange(1, do87Value.size)
-            val decryptedWithPad = Cipher.getInstance("AES/CBC/NoPadding", "BC").apply {
+            val decryptedWithPad = Cipher.getInstance("AES/CBC/NoPadding", bouncyCastleProvider).apply {
                 init(Cipher.DECRYPT_MODE, SecretKeySpec(ksEnc, "AES"), IvParameterSpec(ByteArray(16)))
             }.doFinal(encrypted)
             val decrypted = CryptoUtils.unpad(decryptedWithPad)
@@ -181,7 +207,7 @@ class AesCmacSecureMessaging(
     }
 
     private fun calculateCmac(key: ByteArray, data: ByteArray): ByteArray {
-        val mac = CMac(AESEngine())
+        val mac = CMac(AESEngine.newInstance())
         mac.init(KeyParameter(key))
         mac.update(data, 0, data.size)
         val result = ByteArray(16)
@@ -213,6 +239,34 @@ class AesCmacSecureMessaging(
             length <= 0x7F -> byteArrayOf(length.toByte())
             length <= 0xFF -> byteArrayOf(0x81.toByte(), length.toByte())
             else -> byteArrayOf(0x82.toByte(), (length ushr 8).toByte(), (length and 0xFF).toByte())
+        }
+    }
+
+    /**
+     * Extract the expected Le (response length) from the original APDU command.
+     * Supports short (5 byte) and extended (7 byte) APDU formats.
+     */
+    private fun extractLe(command: ByteArray): Int {
+        return when {
+            // Extended APDU: [CLA INS P1 P2 0x00 LeHi LeLo]
+            command.size >= 7 && (command[4].toInt() and 0xFF) == 0x00 -> {
+                val leRaw = ((command[5].toInt() and 0xFF) shl 8) or (command[6].toInt() and 0xFF)
+                if (leRaw == 0) 65536 else leRaw
+            }
+            // Short APDU with Lc + data + Le: [CLA INS P1 P2 Lc data Le]
+            command.size >= 6 -> {
+                val lc = command[4].toInt() and 0xFF
+                if (command.size > 5 + lc) {
+                    command[5 + lc].toInt() and 0xFF
+                } else {
+                    -1
+                }
+            }
+            // Short APDU with Le only: [CLA INS P1 P2 Le]
+            command.size == 5 -> {
+                command[4].toInt() and 0xFF
+            }
+            else -> -1
         }
     }
 }

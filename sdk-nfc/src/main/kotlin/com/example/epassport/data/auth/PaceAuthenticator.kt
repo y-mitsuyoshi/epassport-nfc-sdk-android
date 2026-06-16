@@ -42,10 +42,8 @@ import javax.crypto.spec.SecretKeySpec
  */
 class PaceAuthenticator : PassportAuthenticator {
 
-    init {
-        if (Security.getProvider("BC") == null) {
-            Security.addProvider(BouncyCastleProvider())
-        }
+    private val bcProvider: BouncyCastleProvider = BouncyCastleProvider().also {
+        if (Security.getProvider(it.name) == null) Security.addProvider(it)
     }
 
     override suspend fun authenticate(
@@ -97,7 +95,6 @@ class PaceAuthenticator : PassportAuthenticator {
         val curveName = paceInfo.parameterId?.let { parameterIdToCurveName(it) }
             ?: "secp256r1"
         val ecSpec = ECNamedCurveTable.getParameterSpec(curveName)
-        val domainParams = ECDomainParameters(ecSpec.curve, ecSpec.g, ecSpec.n, ecSpec.h)
         val g = ecSpec.g
 
         // 6. Map nonce to random scalar p and compute P = p*G
@@ -203,7 +200,7 @@ class PaceAuthenticator : PassportAuthenticator {
 
     private fun decryptNonce(encryptedNonce: ByteArray, key: ByteArray): ByteArray {
         // ICAO 9303 Part 11 uses AES-CBC or 3DES-CBC depending on PACEInfo
-        val cipher = Cipher.getInstance("AES/CBC/NoPadding", "BC")
+        val cipher = Cipher.getInstance("AES/CBC/NoPadding", bcProvider)
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(ByteArray(16)))
         return cipher.doFinal(encryptedNonce)
     }
@@ -242,6 +239,7 @@ class PaceAuthenticator : PassportAuthenticator {
         return scalar
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun kdf(sharedSecret: ByteArray, nonce: ByteArray, keyLengthBits: Int): ByteArray {
         // ICAO 9303 KDF: SHA-1(sharedSecret || counter) repeated
         val keyBytes = keyLengthBits / 8 * 2
@@ -277,6 +275,7 @@ class PaceAuthenticator : PassportAuthenticator {
         var offset = 1 + lengthResult.bytesRead
         if (offset >= data.size) return null
         // Return first tagged content
+        @Suppress("UNUSED_VARIABLE")
         val tag = data[offset].toInt() and 0xFF
         offset++
         val lenResult = parseLength(data, offset)

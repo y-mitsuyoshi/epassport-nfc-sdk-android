@@ -6,22 +6,14 @@ import com.example.epassport.domain.port.NfcTransceiver
 import org.bouncycastle.asn1.ASN1Integer
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.ASN1Sequence
-import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
-import org.bouncycastle.crypto.agreement.ECDHBasicAgreement
-import org.bouncycastle.crypto.params.ECDomainParameters
-import org.bouncycastle.crypto.params.ECPrivateKeyParameters
-import org.bouncycastle.crypto.params.ECPublicKeyParameters
 import org.bouncycastle.jce.ECNamedCurveTable
 import org.bouncycastle.jce.provider.BouncyCastleProvider
-import org.bouncycastle.jce.spec.ECParameterSpec
 import org.bouncycastle.math.ec.ECPoint
 import org.bouncycastle.util.BigIntegers
 import java.math.BigInteger
 import java.security.MessageDigest
 import java.security.Security
-import java.security.KeyFactory
-import java.security.spec.X509EncodedKeySpec
 
 /**
  * Chip Authentication (CA) プロトコルの実装。
@@ -56,7 +48,6 @@ class ChipAuthenticator {
 
         // 3. Generate terminal ephemeral EC key pair on the same curve
         val ecSpec = ECNamedCurveTable.getParameterSpec(caInfo.curveName)
-        val domainParams = ECDomainParameters(ecSpec.curve, ecSpec.g, ecSpec.n, ecSpec.h)
         val terminalPrivate = generateRandomScalar(ecSpec.n)
         val terminalPublic = ecSpec.g.multiply(terminalPrivate).normalize()
 
@@ -113,6 +104,7 @@ class ChipAuthenticator {
                 if (seq.size() < 2) continue
                 val oid = ASN1ObjectIdentifier.getInstance(seq.getObjectAt(0)).id
                 if (oid.startsWith("0.4.0.127.0.7.2.2.3.1")) {
+                    @Suppress("UNUSED_VARIABLE")
                     val version = ASN1Integer.getInstance(seq.getObjectAt(1)).value.toInt()
                     val keyId = if (seq.size() > 2) ASN1Integer.getInstance(seq.getObjectAt(2)).value.toInt() else 0
                     val spki = SubjectPublicKeyInfo.getInstance(seq.getObjectAt(seq.size() - 1))
@@ -130,17 +122,29 @@ class ChipAuthenticator {
     }
 
     private fun inferCurveName(spki: SubjectPublicKeyInfo): String {
-        // Try to extract algorithm parameters; fallback to common curve
         return try {
             val params = spki.algorithm.parameters
-            when {
-                params.toString().contains("256") -> "secp256r1"
-                params.toString().contains("384") -> "secp384r1"
-                params.toString().contains("521") -> "secp521r1"
+            val oid = org.bouncycastle.asn1.ASN1ObjectIdentifier.getInstance(params)
+            when (oid.id) {
+                "1.2.840.10045.3.1.7" -> "secp256r1"
+                "1.3.132.0.34" -> "secp384r1"
+                "1.3.132.0.35" -> "secp521r1"
+                "1.3.36.3.3.2.8.1.1.7" -> "brainpoolP256r1"
                 else -> "secp256r1"
             }
         } catch (e: Exception) {
-            "secp256r1"
+            // Safe fallback to string matching if ASN.1 casting fails
+            try {
+                val paramsStr = spki.algorithm.parameters?.toString() ?: ""
+                when {
+                    paramsStr.contains("256") -> "secp256r1"
+                    paramsStr.contains("384") -> "secp384r1"
+                    paramsStr.contains("521") -> "secp521r1"
+                    else -> "secp256r1"
+                }
+            } catch (ex: Exception) {
+                "secp256r1"
+            }
         }
     }
 
@@ -187,9 +191,10 @@ class ChipAuthenticator {
         val data = response.copyOfRange(0, response.size - 2)
         if (data.isEmpty()) return null
         if (data[0].toInt() and 0xFF != 0x7C) return null
-        val (len, lenBytes) = parseLength(data, 1)
+        val (_, lenBytes) = parseLength(data, 1)
         var offset = 1 + lenBytes
         if (offset >= data.size) return null
+        @Suppress("UNUSED_VARIABLE")
         val tag = data[offset].toInt() and 0xFF
         offset++
         val (valueLen, valueLenBytes) = parseLength(data, offset)

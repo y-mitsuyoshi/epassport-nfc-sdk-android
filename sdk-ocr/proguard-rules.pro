@@ -1,2 +1,8 @@
 # sdk-ocr ProGuard rules for release builds
-# (Empty: sdk-ocr is a library module; consumer-rules.pro handles consumer-side rules)
+
+# リリースビルドでデバッグログ (Log.d / Log.v) を自動削除する
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int d(...);
+}
