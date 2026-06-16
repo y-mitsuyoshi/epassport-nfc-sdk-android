@@ -19,9 +19,14 @@ object PaceInfoParser {
      */
     fun parse(cardAccessBytes: ByteArray): PaceInfo? {
         return try {
-            val root = ASN1Sequence.getInstance(cardAccessBytes)
-            for (i in 0 until root.size()) {
-                val seq = ASN1Sequence.getInstance(root.getObjectAt(i))
+            val rootObj = org.bouncycastle.asn1.ASN1Primitive.fromByteArray(cardAccessBytes)
+            val elements = when (rootObj) {
+                is org.bouncycastle.asn1.ASN1Set -> (0 until rootObj.size()).map { rootObj.getObjectAt(it) }
+                is ASN1Sequence -> (0 until rootObj.size()).map { rootObj.getObjectAt(it) }
+                else -> throw InvalidDataException("Unexpected root object type: ${rootObj?.javaClass?.name}")
+            }
+            for (item in elements) {
+                val seq = ASN1Sequence.getInstance(item)
                 if (seq.size() < 2) continue
                 val oid = ASN1ObjectIdentifier.getInstance(seq.getObjectAt(0)).id
                 if (isPaceOid(oid)) {

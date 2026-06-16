@@ -63,7 +63,12 @@ class ReadPassportUseCase(
             // secureTransceiver のスコープ: 認証後にセッション鍵を確実にゼロクリアするため
             // Closeable (SecureMessaging) であれば finally で close() を呼ぶ。
             try {
-                var currentCache = cachedData ?: CachedPassportData()
+                // キャッシュの期限切れチェック: expired の場合は新規として扱う
+                var currentCache = if (cachedData != null && !cachedData.isExpired()) {
+                    cachedData
+                } else {
+                    CachedPassportData()
+                }
 
                 // 3. Read DG1
                 val dg1 = if (currentCache.dg1 != null) {

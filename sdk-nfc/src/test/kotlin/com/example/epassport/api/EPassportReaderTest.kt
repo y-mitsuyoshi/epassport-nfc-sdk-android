@@ -154,8 +154,16 @@ class EPassportReaderTest {
             }
         }
 
+        var latestCache: CachedPassportData? = null
+
         // 1st attempt: should fail
-        val result1 = EPassportReader.read(context, tag, mrzData1)
+        val result1 = EPassportReader.read(
+            context = context,
+            tag = tag,
+            mrzData = mrzData1,
+            cachedData = latestCache,
+            onCacheUpdate = { latestCache = it }
+        )
         if (result1 is ReadResult.Error) {
             println("result1 error: ${result1.exception}")
             result1.exception.printStackTrace()
@@ -163,7 +171,13 @@ class EPassportReaderTest {
         assertTrue(result1 is ReadResult.Error)
 
         // 2nd attempt: should succeed and resume using cached data
-        val result2 = EPassportReader.read(context, tag, mrzData2)
+        val result2 = EPassportReader.read(
+            context = context,
+            tag = tag,
+            mrzData = mrzData2,
+            cachedData = latestCache,
+            onCacheUpdate = { latestCache = it }
+        )
         if (result2 is ReadResult.Error) {
             println("result2 error: ${result2.exception}")
             result2.exception.printStackTrace()

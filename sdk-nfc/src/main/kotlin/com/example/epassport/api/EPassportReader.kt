@@ -24,32 +24,32 @@ import java.security.MessageDigest
  */
 object EPassportReader {
 
-    // 瞬断からのレジューム用セキュアメモリキャッシュ（有効期限5分）
-    private val cacheMap = java.util.concurrent.ConcurrentHashMap<String, CachedPassportData>()
-
-    private fun cleanExpiredCache() {
-        val iterator = cacheMap.entries.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (entry.value.isExpired()) {
-                iterator.remove()
-            }
-        }
-    }
-
     /**
      * MRZ 情報を用いて NFC タグからパスポートデータ (DG1, DG2, および Active Authenticationデータ) を読み取る。
      *
      * 本メソッドは実行環境の RASP チェック（root/エミュレータ/デバッグ検出）を行い、
      * 安全でない環境では即座にエラーを返す。
      *
+     * Google Play Integrity API が有効な場合（[googleCloudProjectNumber] が設定されている場合）、
+     * デバイスとアプリの真正性を証明する Integrity Token が取得され、[PassportData.playIntegrityToken]
+     * に格納されます。このトークンは [PassportData.toServerTransferData] 経由でバックエンドに送信し、
+     * Google サーバーでの検証を受ける必要があります。バックエンドでの検証なしでは、トークンの
+     * 改ざんを検出できません。
+     *
      * @param context Android の Context（RASP チェックに使用）
      * @param tag Android の NFC Framework から取得した Tag オブジェクト
      * @param mrzData OCR 等で取得した MRZ (Machine Readable Zone) 情報
-     * @param challenge サーバーが発行した検証用のワンタイム乱数（null の場合はSDKが自動生成します）
+     * @param challenge サーバーが発行した検証用のワンタイム乱数。
+     *   Active Authentication のチャレンジとして使用されます。
+     *   null の場合は SDK が自動生成します。
+     *   Google Play Integrity が有効な場合、この値の SHA-256 ハッシュが nonce として利用されます。
      * @param trustStore アクティブ認証/パッシブ認証検証用の CSCA 信頼局ストア
      * @param allowDebug デバッグ実行環境を許容するかどうか（RASPチェックのデバッグ検出の迂回）
-     * @param googleCloudProjectNumber Google Cloud プロジェクト番号（Google Play Integrity API 呼び出しに必要）
+     * @param googleCloudProjectNumber Google Cloud プロジェクト番号（Google Play Integrity API 呼び出しに必要）。
+     *   設定すると Integrity Token が取得され結果に含まれます。バックエンドでの検証必須。
+     * @param cachedData 瞬断からの復帰（レジューム）用の一時キャッシュデータ。呼び出し元が保持し、再接続時に渡します。
+     * @param onCacheUpdate キャッシュデータが更新された（新しいデータグループの読み取りに成功した）際に呼ばれるコールバック。
+     *   呼び出し元はここで渡されたキャッシュオブジェクトを保持し、再接続時に [cachedData] 引数として渡します。
      * @param onProgress 進行状況を受け取るオプションのコールバック
      * @return 読み取り結果 (Success または Error)
      */
@@ -61,6 +61,8 @@ object EPassportReader {
         trustStore: CscaTrustStore? = null,
         allowDebug: Boolean = false,
         googleCloudProjectNumber: Long? = null,
+        cachedData: CachedPassportData? = null,
+        onCacheUpdate: ((CachedPassportData) -> Unit)? = null,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult = withContext(Dispatchers.IO) {
         val securityChecker = RuntimeSecurityChecker(context, allowDebug = allowDebug)
@@ -74,25 +76,25 @@ object EPassportReader {
 
         // Google Play Integrity API による真正性検証トークン取得
         var integrityToken: String? = null
-        if (googleCloudProjectNumber != null && challenge != null) {
+        if (googleCloudProjectNumber != null) {
+            // challenge が null の場合は SDK が自動生成する
+            val resolvedChallenge = challenge ?: ByteArray(32).apply {
+                java.security.SecureRandom().nextBytes(this)
+            }
             try {
                 integrityToken = PlayIntegrityChecker.requestToken(
                     context = context,
                     cloudProjectNumber = googleCloudProjectNumber,
-                    challenge = challenge
+                    challenge = resolvedChallenge
                 )
             } catch (e: Exception) {
-                if (!allowDebug) {
-                    return@withContext ReadResult.Error(
-                        EPassportException("Security validation failed: Play Integrity API token acquisition failed", e)
-                    )
-                } else {
-                    android.util.Log.w("EPassportReader", "Play Integrity acquisition failed (allowed in debug): ${e.message}")
-                }
+                // 商用eKYCのコンバージョン率を損なわないため、取得失敗は致命的エラーにせず警告ログのみとする。
+                // 真正性の最終判断はサーバー側で行う（トークンがない場合はサーバー側で追加の審査を行う等）。
+                android.util.Log.w("EPassportReader", "Play Integrity token acquisition failed: ${e.message}", e)
             }
         }
 
-        readInternal(tag, mrzData, challenge, trustStore, integrityToken, onProgress)
+        readInternal(tag, mrzData, challenge, trustStore, integrityToken, cachedData, onCacheUpdate, onProgress)
     }
 
     /**
@@ -106,9 +108,11 @@ object EPassportReader {
         mrzData: MrzData,
         challenge: ByteArray? = null,
         trustStore: CscaTrustStore? = null,
+        cachedData: CachedPassportData? = null,
+        onCacheUpdate: ((CachedPassportData) -> Unit)? = null,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult = withContext(Dispatchers.IO) {
-        readInternal(tag, mrzData, challenge, trustStore, null, onProgress)
+        readInternal(tag, mrzData, challenge, trustStore, null, cachedData, onCacheUpdate, onProgress)
     }
 
     private suspend fun readInternal(
@@ -117,6 +121,8 @@ object EPassportReader {
         challenge: ByteArray? = null,
         trustStore: CscaTrustStore? = null,
         playIntegrityToken: String? = null,
+        cachedData: CachedPassportData? = null,
+        onCacheUpdate: ((CachedPassportData) -> Unit)? = null,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult {
         val isoDep = IsoDep.get(tag) ?: return ReadResult.Error(
@@ -132,19 +138,6 @@ object EPassportReader {
         val reader = IcaoDataGroupReader()
         val useCase = ReadPassportUseCase(authenticator, reader)
 
-        // キャッシュ関連処理（PIIを避けるため、MRZのSHA-256ハッシュ値をキーとする）
-        cleanExpiredCache()
-        val cacheKey = try {
-            val mrzInfo = mrzData.mrzInformation
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hash = digest.digest(mrzInfo.toByteArray(Charsets.UTF_8))
-            hash.joinToString("") { "%02X".format(it) }
-        } catch (e: Exception) {
-            null
-        }
-
-        val cachedData = cacheKey?.let { cacheMap[it] }
-
         return try {
             isoDep.connect()
             val passportData = useCase.execute(
@@ -154,13 +147,10 @@ object EPassportReader {
                 trustStore = trustStore,
                 cachedData = cachedData,
                 onCacheUpdate = { updated ->
-                    cacheKey?.let { cacheMap[it] = updated }
+                    onCacheUpdate?.invoke(updated)
                 },
                 onProgress = { progress -> onProgress?.invoke(progress) }
             )
-
-            // 読み取り完了時はキャッシュから削除してメモリを解放
-            cacheKey?.let { cacheMap.remove(it) }
 
             // Play Integrity Token を結果に注入
             val finalData = if (playIntegrityToken != null) {

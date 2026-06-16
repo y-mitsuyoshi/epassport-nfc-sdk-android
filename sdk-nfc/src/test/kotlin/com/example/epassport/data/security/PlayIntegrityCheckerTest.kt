@@ -91,6 +91,8 @@ class PlayIntegrityCheckerTest {
             fail("Expected EPassportException to be thrown")
         } catch (e: EPassportException) {
             assertEquals("Google Play Integrity API request failed", e.message)
+            // Kotlin coroutines の resumeWithException による二重ラッピングに対応するため、
+            // cause が EPassportException の場合はさらにその cause を取得する
             val rootCause = if (e.cause is EPassportException) e.cause?.cause else e.cause
             assertEquals(exception, rootCause)
         }

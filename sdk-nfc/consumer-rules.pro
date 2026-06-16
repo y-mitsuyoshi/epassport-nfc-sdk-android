@@ -10,6 +10,9 @@
 -keep class com.example.epassport.domain.model.** { *; }
 -keep class com.example.epassport.domain.exception.** { *; }
 
+# Google Play Integrity API
+-keep class com.google.android.play.core.integrity.** { *; }
+
 # リリースビルドでデバッグログ (Log.d / Log.v) を自動削除する
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);

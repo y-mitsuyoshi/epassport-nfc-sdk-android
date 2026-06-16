@@ -93,63 +93,72 @@ class PaceAuthenticator : PassportAuthenticator {
         val passwordKey = derivePaceKey(mrzData, passwordRef)
         val nonce = decryptNonce(encryptedNonce, passwordKey)
 
-        // 5. Determine curve parameters
-        val curveName = paceInfo.parameterId?.let { parameterIdToCurveName(it) }
-            ?: "secp256r1"
-        val ecSpec = ECNamedCurveTable.getParameterSpec(curveName)
-        val g = ecSpec.g
+        var sharedSecretBytes: ByteArray? = null
+        var kdfResult: ByteArray? = null
+        try {
+            // 5. Determine curve parameters
+            val curveName = paceInfo.parameterId?.let { parameterIdToCurveName(it) }
+                ?: "secp256r1"
+            val ecSpec = ECNamedCurveTable.getParameterSpec(curveName)
+            val g = ecSpec.g
 
-        // 6. Map nonce to random scalar p and compute P = p*G
-        val p = mapNonceToScalar(nonce, ecSpec.n)
-        val pPoint = g.multiply(p)
+            // 6. Terminal generates random scalar r and computes X = r * G
+            val r = generateRandomScalar(ecSpec.n)
+            val terminalX = g.multiply(r)
 
-        // 7. GENERAL AUTHENTICATE: send P (step 1)
-        val step1 = ApduCommand.generalAuthenticate(wrapDynamicAuthData(0x81, pPoint.getEncoded(false)))
-        val step1Response = transceiver.transceive(step1)
-        checkStatus(step1Response, "PACE GA step 1")
-        val chipPBytes = extractDynamicAuthenticationData(step1Response)
-            ?: throw AuthenticationException("PACE step 1 chip P not found")
-        val chipP = ecSpec.curve.decodePoint(chipPBytes)
+            // 7. GENERAL AUTHENTICATE: send X (step 1, tag 0x81)
+            val step1 = ApduCommand.generalAuthenticate(wrapDynamicAuthData(0x81, terminalX.getEncoded(false)))
+            val step1Response = transceiver.transceive(step1)
+            checkStatus(step1Response, "PACE GA step 1")
+            val chipYBytes = extractDynamicAuthenticationData(step1Response)
+                ?: throw AuthenticationException("PACE step 1 chip Y not found")
+            val chipY = ecSpec.curve.decodePoint(chipYBytes)
 
-        // 8. GM mapping: G' = P + P_chip
-        val mappedG = pPoint.add(chipP)
+            // 8. GM mapping: G' = abm(s) * G + K, where K = r * Y
+            val kPoint = chipY.multiply(r).normalize()
+            val p = mapNonceToScalar(nonce, ecSpec.n)
+            val mappedG = g.multiply(p).add(kPoint).normalize()
 
-        // 9. Terminal key pair over mapped generator
-        val terminalScalar = generateRandomScalar(ecSpec.n)
-        val terminalPublic = mappedG.multiply(terminalScalar)
+            // 9. Terminal generates random scalar x' and computes T_A = x' * G'
+            val terminalScalar = generateRandomScalar(ecSpec.n)
+            val terminalPublic = mappedG.multiply(terminalScalar)
 
-        // 10. GENERAL AUTHENTICATE: send T (step 2)
-        val step2 = ApduCommand.generalAuthenticate(wrapDynamicAuthData(0x83, terminalPublic.getEncoded(false)))
-        val step2Response = transceiver.transceive(step2)
-        checkStatus(step2Response, "PACE GA step 2")
-        val chipCBytes = extractDynamicAuthenticationData(step2Response)
-            ?: throw AuthenticationException("PACE step 2 chip public key not found")
-        val chipC = ecSpec.curve.decodePoint(chipCBytes)
+            // 10. GENERAL AUTHENTICATE: send T_A (step 2, tag 0x83)
+            val step2 = ApduCommand.generalAuthenticate(wrapDynamicAuthData(0x83, terminalPublic.getEncoded(false)))
+            val step2Response = transceiver.transceive(step2)
+            checkStatus(step2Response, "PACE GA step 2")
+            val chipCBytes = extractDynamicAuthenticationData(step2Response)
+                ?: throw AuthenticationException("PACE step 2 chip public key not found")
+            val chipC = ecSpec.curve.decodePoint(chipCBytes)
 
-        // 11. ECDH shared secret
-        val sharedSecret = chipC.multiply(terminalScalar).normalize().xCoord.toBigInteger()
-        val sharedSecretBytes = BigIntegers.asUnsignedByteArray(
-            (ecSpec.n.bitLength() + 7) / 8,
-            sharedSecret
-        )
+            // 11. ECDH shared secret: K_master = x' * T_B
+            val sharedSecret = chipC.multiply(terminalScalar).normalize().xCoord.toBigInteger()
+            sharedSecretBytes = BigIntegers.asUnsignedByteArray(
+                (ecSpec.n.bitLength() + 7) / 8,
+                sharedSecret
+            )
 
-        // 12. Derive session keys
-        val kdfResult = kdf(sharedSecretBytes, nonce, paceInfo.keyLength)
-        val ksEnc = kdfResult.copyOfRange(0, paceInfo.keyLength / 8)
-        val ksMac = kdfResult.copyOfRange(paceInfo.keyLength / 8, 2 * paceInfo.keyLength / 8)
-        val ssc = nonce.copyOfRange(0, 8)
+            // 12. Derive session keys (AES OIDs use SHA-256 KDF, 3DES uses SHA-1)
+            val hashAlg = if (paceInfo.protocolOid.contains(".2.2.4.2")) "SHA-256" else "SHA-1"
+            kdfResult = kdf(sharedSecretBytes, nonce, paceInfo.keyLength, hashAlg)
+            val ksEnc = kdfResult.copyOfRange(0, paceInfo.keyLength / 8)
+            val ksMac = kdfResult.copyOfRange(paceInfo.keyLength / 8, 2 * paceInfo.keyLength / 8)
+            val ssc = nonce.copyOfRange(0, 8)
 
-        // 13. Verify chip's token (step 3)
-        val step3 = ApduCommand.generalAuthenticate(wrapDynamicAuthData(0x85, byteArrayOf()))
-        val step3Response = transceiver.transceive(step3)
-        checkStatus(step3Response, "PACE GA step 3")
+            // 13. Verify chip's token (step 3)
+            val step3 = ApduCommand.generalAuthenticate(wrapDynamicAuthData(0x85, byteArrayOf()))
+            val step3Response = transceiver.transceive(step3)
+            checkStatus(step3Response, "PACE GA step 3")
 
-        // Secure cleanup
-        passwordKey.fill(0)
-        sharedSecretBytes.fill(0)
-
-        // 14. Return AES-CMAC SecureMessaging
-        return AesCmacSecureMessaging(transceiver, ksEnc, ksMac, ssc)
+            // 14. Return AES-CMAC SecureMessaging
+            return AesCmacSecureMessaging(transceiver, ksEnc, ksMac, ssc)
+        } finally {
+            // Secure cleanup of cryptographic materials
+            passwordKey.fill(0)
+            sharedSecretBytes?.fill(0)
+            nonce.fill(0)
+            kdfResult?.fill(0)
+        }
     }
 
     private suspend fun readFile(transceiver: NfcTransceiver): ByteArray {
@@ -157,19 +166,23 @@ class PaceAuthenticator : PassportAuthenticator {
         checkStatus(initial, "read file header")
         val header = initial.copyOfRange(0, initial.size - 2)
 
-        // Simple case: assume short TLV with 1-3 byte length
         val lengthResult = parseLength(header, 1)
         val totalLength = 1 + lengthResult.bytesRead + lengthResult.length
-        val output = header.copyOfRange(0, minOf(header.size, totalLength))
+        
+        val output = ByteArrayOutputStream()
+        output.write(header.copyOfRange(0, minOf(header.size, totalLength)))
 
-        if (output.size < totalLength) {
-            val remaining = totalLength - output.size
-            val read = transceiver.transceive(ApduCommand.readBinary(output.size, remaining.coerceAtMost(256)))
-            checkStatus(read, "read file body")
+        var offset = output.size()
+        while (offset < totalLength) {
+            val remaining = totalLength - offset
+            val read = transceiver.transceive(ApduCommand.readBinary(offset, remaining.coerceAtMost(224)))
+            checkStatus(read, "read file body at offset $offset")
             val body = read.copyOfRange(0, read.size - 2)
-            return output + body
+            if (body.isEmpty()) break
+            output.write(body)
+            offset += body.size
         }
-        return output
+        return output.toByteArray()
     }
 
     private data class LengthResult(val length: Int, val bytesRead: Int)
@@ -275,13 +288,13 @@ class PaceAuthenticator : PassportAuthenticator {
     }
 
     @Suppress("UNUSED_PARAMETER")
-    private fun kdf(sharedSecret: ByteArray, nonce: ByteArray, keyLengthBits: Int): ByteArray {
-        // ICAO 9303 KDF: SHA-1(sharedSecret || counter) repeated
+    private fun kdf(sharedSecret: ByteArray, nonce: ByteArray, keyLengthBits: Int, hashAlg: String): ByteArray {
+        // ICAO 9303 KDF: SHA-1 or SHA-256 (sharedSecret || counter) repeated
         val keyBytes = keyLengthBits / 8 * 2
         val result = ByteArrayOutputStream()
         var counter = 1
         while (result.size() < keyBytes) {
-            val digest = MessageDigest.getInstance("SHA-1")
+            val digest = MessageDigest.getInstance(hashAlg)
             digest.update(sharedSecret)
             digest.update(byteArrayOf((counter ushr 24).toByte(), (counter ushr 16).toByte(), (counter ushr 8).toByte(), counter.toByte()))
             result.write(digest.digest())
