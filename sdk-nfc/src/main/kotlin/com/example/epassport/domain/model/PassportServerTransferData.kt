@@ -11,5 +11,6 @@ data class PassportServerTransferData(
     val dg1: Dg1Data,
     val faceImageBase64: String?,
     val faceImageMimeType: String?,
-    val activeAuthentication: Map<String, String>?
+    val activeAuthentication: Map<String, String>?,
+    val playIntegrityToken: String? = null
 )

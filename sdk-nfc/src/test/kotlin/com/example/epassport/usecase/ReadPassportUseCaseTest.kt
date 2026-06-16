@@ -42,7 +42,7 @@ class ReadPassportUseCaseTest {
         val mockDg1 = mockk<Dg1Data>()
         val mockDg2 = mockk<Dg2Data>()
 
-        coEvery { authenticator.authenticate(transceiver, any()) } returns secureTransceiver
+        coEvery { authenticator.authenticate(transceiver, any<MrzData>()) } returns secureTransceiver
         coEvery { reader.readDg1(secureTransceiver) } returns mockDg1
         coEvery { reader.readDg2(secureTransceiver) } returns mockDg2
 
@@ -56,7 +56,7 @@ class ReadPassportUseCaseTest {
         assertEquals(mockDg2, result.dg2)
 
         coVerify { transceiver.selectApp() }
-        coVerify { authenticator.authenticate(transceiver, any()) }
+        coVerify { authenticator.authenticate(transceiver, any<MrzData>()) }
         coVerify { reader.readDg1(secureTransceiver) }
         coVerify { reader.readDg2(secureTransceiver) }
 
@@ -73,7 +73,7 @@ class ReadPassportUseCaseTest {
     fun execute_authFailure_throwsException() { runBlocking {
         val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
         
-        coEvery { authenticator.authenticate(transceiver, any()) } throws AuthenticationException("Fail")
+        coEvery { authenticator.authenticate(transceiver, any<MrzData>()) } throws AuthenticationException("Fail")
 
         val progresses = mutableListOf<ReadProgress>()
         
@@ -89,7 +89,7 @@ class ReadPassportUseCaseTest {
     @Test(expected = AuthenticationException::class)
     fun execute_authThrowsEPassportException_rethrowsOriginalException() { runBlocking {
         val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
-        coEvery { authenticator.authenticate(transceiver, any()) } throws AuthenticationException("Fail")
+        coEvery { authenticator.authenticate(transceiver, any<MrzData>()) } throws AuthenticationException("Fail")
         useCase.execute(transceiver, mrzData)
     } }
 
@@ -97,7 +97,7 @@ class ReadPassportUseCaseTest {
     fun execute_genericException_isWrappedInEPassportException() { runBlocking {
         val mrzData = MrzData("L898902C<".toCharArray(), "690806".toCharArray(), "940623".toCharArray())
         val secureTransceiver = mockk<NfcTransceiver>()
-        coEvery { authenticator.authenticate(transceiver, any()) } returns secureTransceiver
+        coEvery { authenticator.authenticate(transceiver, any<MrzData>()) } returns secureTransceiver
         coEvery { reader.readDg1(secureTransceiver) } throws RuntimeException("Unexpected runtime error")
         
         try {

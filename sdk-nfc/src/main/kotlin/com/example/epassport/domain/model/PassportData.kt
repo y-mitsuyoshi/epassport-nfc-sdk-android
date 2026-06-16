@@ -12,7 +12,8 @@ data class PassportData(
     val dg1: Dg1Data,
     val dg2: Dg2Data? = null, // 顔写真が含まれない場合を考慮
     val activeAuthenticationData: ActiveAuthenticationData? = null,
-    val verificationResult: PassportVerificationResult? = null
+    val verificationResult: PassportVerificationResult? = null,
+    val playIntegrityToken: String? = null // Google Play Integrity API トークン
 ) {
     /**
      * TRUSTDOCK サーバーへの転送用にデータを Base64 シリアライズ形式に変換します。
@@ -26,7 +27,8 @@ data class PassportData(
             dg1 = dg1,
             faceImageBase64 = faceImageBase64,
             faceImageMimeType = dg2?.mimeType,
-            activeAuthentication = activeAuthenticationData?.toBase64Map()
+            activeAuthentication = activeAuthenticationData?.toBase64Map(),
+            playIntegrityToken = playIntegrityToken
         )
     }
 

@@ -59,10 +59,10 @@ class PaceAuthenticator : PassportAuthenticator {
      * PACE 認証を実行する。
      *
      * @param transceiver NFC トランシーバー
-     * @param mrzData MRZ 情報（パスワード源）
+     * @param mrzData MRZ 情報（パスワード源、オプショナルで CAN）
      * @return AES-CMAC ベースの SecureMessaging ラッパー
      */
-    suspend fun authenticate(transceiver: NfcTransceiver, mrzData: MrzData): NfcTransceiver {
+    override suspend fun authenticate(transceiver: NfcTransceiver, mrzData: MrzData): NfcTransceiver {
         // 1. SELECT and read EF.CardAccess
         val cardAccessResponse = transceiver.transceive(ApduCommand.selectCardAccess())
         checkStatus(cardAccessResponse, "SELECT EF.CardAccess")
@@ -75,9 +75,11 @@ class PaceAuthenticator : PassportAuthenticator {
             throw AuthenticationException("Only ECDH-based PACE is supported")
         }
 
+        val passwordRef = if (mrzData.can != null) PACE_PASSWORD_CAN else PACE_PASSWORD_MRZ
+
         // 2. MSE:Set AT
         val oidBytes = ASN1ObjectIdentifier(paceInfo.protocolOid).encoded
-        val mseAt = ApduCommand.paceMseSetAt(oidBytes, PACE_PASSWORD_MRZ)
+        val mseAt = ApduCommand.paceMseSetAt(oidBytes, passwordRef)
         val mseResponse = transceiver.transceive(mseAt)
         checkStatus(mseResponse, "MSE:Set AT")
 
@@ -88,8 +90,8 @@ class PaceAuthenticator : PassportAuthenticator {
             ?: throw AuthenticationException("PACE nonce not found in response")
 
         // 4. Decrypt nonce with password-derived key
-        val password = derivePacePassword(mrzData)
-        val nonce = decryptNonce(encryptedNonce, password)
+        val passwordKey = derivePaceKey(mrzData, passwordRef)
+        val nonce = decryptNonce(encryptedNonce, passwordKey)
 
         // 5. Determine curve parameters
         val curveName = paceInfo.parameterId?.let { parameterIdToCurveName(it) }
@@ -143,7 +145,7 @@ class PaceAuthenticator : PassportAuthenticator {
         checkStatus(step3Response, "PACE GA step 3")
 
         // Secure cleanup
-        password.fill(0)
+        passwordKey.fill(0)
         sharedSecretBytes.fill(0)
 
         // 14. Return AES-CMAC SecureMessaging
@@ -196,6 +198,39 @@ class PaceAuthenticator : PassportAuthenticator {
         mrzInfo.toCharArray().fill('\u0000')
         hash.fill(0)
         return result
+    }
+
+    private fun derivePaceKey(mrzData: MrzData, passwordRef: Byte): ByteArray {
+        val keySeed = if (passwordRef == PACE_PASSWORD_CAN) {
+            val canChar = mrzData.can ?: throw AuthenticationException("CAN is required for CAN-based PACE")
+            val bytes = String(canChar).toByteArray(Charsets.UTF_8)
+            // Clear temporary string content by overwriting
+            bytes
+        } else {
+            // MRZ info
+            val mrzInfo = mrzData.mrzInformation
+            val digest = MessageDigest.getInstance("SHA-1")
+            digest.update(mrzInfo.toByteArray(Charsets.UTF_8))
+            val hash = digest.digest()
+            val seed = hash.copyOfRange(0, 16)
+            mrzInfo.toCharArray().fill('\u0000')
+            hash.fill(0)
+            seed
+        }
+
+        // Derive static key K_pi: KDF(keySeed, 3) -> SHA-1(keySeed || 0x00000003)
+        val digest = MessageDigest.getInstance("SHA-1")
+        digest.update(keySeed)
+        digest.update(byteArrayOf(0, 0, 0, 3))
+        val hash = digest.digest()
+        val kPi = hash.copyOfRange(0, 16)
+
+        // Clear temporary material
+        if (passwordRef == PACE_PASSWORD_CAN) {
+            keySeed.fill(0)
+        }
+        hash.fill(0)
+        return kPi
     }
 
     private fun decryptNonce(encryptedNonce: ByteArray, key: ByteArray): ByteArray {
@@ -305,5 +340,6 @@ class PaceAuthenticator : PassportAuthenticator {
 
     companion object {
         private const val PACE_PASSWORD_MRZ: Byte = 0x01
+        private const val PACE_PASSWORD_CAN: Byte = 0x02
     }
 }

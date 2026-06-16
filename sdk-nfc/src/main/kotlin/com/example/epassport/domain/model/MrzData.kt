@@ -10,10 +10,11 @@ import java.util.Arrays
  * 機密情報（PII）のヒープ残留を減らすため、各フィールドは [CharArray] で保持される。
  * 利用完了後は必ず [clear] を呼び出してメモリをゼロクリアすること。
  */
-class MrzData(
+class MrzData @JvmOverloads constructor(
     documentNumber: CharArray,   // 最大9文字
     dateOfBirth: CharArray,      // YYMMDD
-    dateOfExpiry: CharArray      // YYMMDD
+    dateOfExpiry: CharArray,     // YYMMDD
+    can: CharArray? = null       // Card Access Number (PACE用、オプショナル)
 ) {
     /** 文書番号（可変長）。外部からの改変を防ぐためコピーを保持する。 */
     val documentNumber: CharArray = documentNumber.copyOf()
@@ -21,6 +22,8 @@ class MrzData(
     val dateOfBirth: CharArray = dateOfBirth.copyOf()
     /** 有効期限（YYMMDD）。外部からの改変を防ぐためコピーを保持する。 */
     val dateOfExpiry: CharArray = dateOfExpiry.copyOf()
+    /** Card Access Number（PACE用、オプショナル）。外部からの改変を防ぐためコピーを保持する。 */
+    val can: CharArray? = can?.copyOf()
 
     /** BAC 用 MRZ 情報（チェックディジット付き）。一時的な文字列として生成される。 */
     val mrzInformation: String get() {
@@ -145,6 +148,7 @@ class MrzData(
         Arrays.fill(documentNumber, '\u0000')
         Arrays.fill(dateOfBirth, '\u0000')
         Arrays.fill(dateOfExpiry, '\u0000')
+        can?.let { Arrays.fill(it, '\u0000') }
     }
 
     private fun padCharArray(input: CharArray, length: Int): CharArray {
@@ -164,13 +168,15 @@ class MrzData(
         if (other !is MrzData) return false
         return documentNumber.contentEquals(other.documentNumber) &&
                 dateOfBirth.contentEquals(other.dateOfBirth) &&
-                dateOfExpiry.contentEquals(other.dateOfExpiry)
+                dateOfExpiry.contentEquals(other.dateOfExpiry) &&
+                ((can == null && other.can == null) || (can != null && other.can != null && can.contentEquals(other.can)))
     }
 
     override fun hashCode(): Int {
         var result = documentNumber.contentHashCode()
         result = 31 * result + dateOfBirth.contentHashCode()
         result = 31 * result + dateOfExpiry.contentHashCode()
+        result = 31 * result + (can?.contentHashCode() ?: 0)
         return result
     }
 

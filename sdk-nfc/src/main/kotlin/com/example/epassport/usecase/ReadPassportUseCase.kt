@@ -40,6 +40,8 @@ class ReadPassportUseCase(
         mrzData: MrzData,
         challenge: ByteArray? = null,
         trustStore: CscaTrustStore? = null,
+        cachedData: CachedPassportData? = null,
+        onCacheUpdate: (CachedPassportData) -> Unit = {},
         onProgress: (ReadProgress) -> Unit = {}
     ): PassportData {
         try {
@@ -48,68 +50,87 @@ class ReadPassportUseCase(
             // 1. SELECT Applet
             transceiver.selectApp()
 
-            // 2. Authenticate (BAC)
+            // 2. Authenticate (PACE / BAC)
             onProgress(ReadProgress.AUTHENTICATING)
-            val bacKey = mrzData.deriveBacKeys()
-            // MRZ 情報は BAC 鍵導出後に不要となるため、認証後にゼロクリアする。
-            mrzData.clear()
             val secureTransceiver = try {
-                authenticator.authenticate(transceiver, bacKey)
+                authenticator.authenticate(transceiver, mrzData)
             } finally {
-                // セキュリティ要件: 認証の成否にかかわらず、BAC 鍵は
+                // セキュリティ要件: 認証の成否にかかわらず、MRZ 情報は
                 // 使用直後にヒープメモリからゼロクリアする。
-                bacKey.clear()
+                mrzData.clear()
             }
 
-            // secureTransceiver のスコープ: 誤差後にセッション鍵を確実にゼロクリアするため
+            // secureTransceiver のスコープ: 認証後にセッション鍵を確実にゼロクリアするため
             // Closeable (SecureMessaging) であれば finally で close() を呼ぶ。
             try {
+                var currentCache = cachedData ?: CachedPassportData()
+
                 // 3. Read DG1
-                onProgress(ReadProgress.READING_DG1)
-                val dg1 = reader.readDg1(secureTransceiver)
+                val dg1 = if (currentCache.dg1 != null) {
+                    currentCache.dg1!!
+                } else {
+                    onProgress(ReadProgress.READING_DG1)
+                    val readDg1 = reader.readDg1(secureTransceiver)
+                    currentCache = currentCache.copy(dg1 = readDg1, timestamp = System.currentTimeMillis())
+                    onCacheUpdate(currentCache)
+                    readDg1
+                }
 
                 // 4. Read DG2
-                onProgress(ReadProgress.READING_DG2)
-                val dg2 = reader.readDg2(secureTransceiver)
+                val dg2 = if (currentCache.dg2 != null) {
+                    currentCache.dg2!!
+                } else {
+                    onProgress(ReadProgress.READING_DG2)
+                    val readDg2 = reader.readDg2(secureTransceiver)
+                    currentCache = currentCache.copy(dg2 = readDg2, timestamp = System.currentTimeMillis())
+                    onCacheUpdate(currentCache)
+                    readDg2
+                }
 
                 // 5. Read SOD for Passive Authentication
-                var sodBytes: ByteArray? = null
-                if (trustStore != null) {
+                var sodBytes = currentCache.sodBytes
+                if (trustStore != null && sodBytes == null) {
                     try {
                         sodBytes = reader.readSod(secureTransceiver)
+                        currentCache = currentCache.copy(sodBytes = sodBytes, timestamp = System.currentTimeMillis())
+                        onCacheUpdate(currentCache)
                     } catch (e: EPassportException) {
                         android.util.Log.w("ReadPassportUseCase", "Failed to read SOD: ${e.message}")
                     }
                 }
 
                 // 6. Try Active Authentication (AA) - failure here should not block success of reading
-                var aaData: com.example.epassport.domain.model.ActiveAuthenticationData? = null
-                try {
-                    onProgress(ReadProgress.PERFORMING_ACTIVE_AUTH)
-                    val finalChallenge = challenge ?: ByteArray(8).apply {
-                        java.security.SecureRandom().nextBytes(this)
+                var aaData = currentCache.aaData
+                if (aaData == null) {
+                    try {
+                        onProgress(ReadProgress.PERFORMING_ACTIVE_AUTH)
+                        val finalChallenge = challenge ?: ByteArray(8).apply {
+                            java.security.SecureRandom().nextBytes(this)
+                        }
+
+                        // Read DG15 (Public Key Info)
+                        val dg15Bytes = reader.readDg15(secureTransceiver)
+
+                        // Perform INTERNAL AUTHENTICATE
+                        val signature = reader.performActiveAuthentication(secureTransceiver, finalChallenge)
+
+                        aaData = com.example.epassport.domain.model.ActiveAuthenticationData(
+                            publicKeyInfo = dg15Bytes,
+                            challenge = finalChallenge,
+                            signature = signature
+                        )
+                        currentCache = currentCache.copy(aaData = aaData, timestamp = System.currentTimeMillis())
+                        onCacheUpdate(currentCache)
+                    } catch (e: NfcTagLostException) {
+                        // AA 中にタグが失われた場合はセッション自体が無効なので再スローする
+                        throw e
+                    } catch (e: EPassportException) {
+                        // AA はオプショナル。DG15 未実装のパスポートなどで失敗する可能性あり。
+                        android.util.Log.i("ReadPassportUseCase", "Active Authentication not supported or failed: ${e.message}")
+                    } catch (e: Exception) {
+                        // 上記以外のエラー (e.g. チップライブラリのバグ) も非致命的
+                        android.util.Log.w("ReadPassportUseCase", "Unexpected error during Active Authentication: ${e.message}")
                     }
-
-                    // Read DG15 (Public Key Info)
-                    val dg15Bytes = reader.readDg15(secureTransceiver)
-
-                    // Perform INTERNAL AUTHENTICATE
-                    val signature = reader.performActiveAuthentication(secureTransceiver, finalChallenge)
-
-                    aaData = com.example.epassport.domain.model.ActiveAuthenticationData(
-                        publicKeyInfo = dg15Bytes,
-                        challenge = finalChallenge,
-                        signature = signature
-                    )
-                } catch (e: NfcTagLostException) {
-                    // AA 中にタグが失われた場合はセッション自体が無効なので再スローする
-                    throw e
-                } catch (e: EPassportException) {
-                    // AA はオプショナル。DG15 未実装のパスポートなどで失敗する可能性あり。
-                    android.util.Log.i("ReadPassportUseCase", "Active Authentication not supported or failed: ${e.message}")
-                } catch (e: Exception) {
-                    // 上記以外のエラー (e.g. チップライブラリのバグ) も非致命造重
-                    android.util.Log.w("ReadPassportUseCase", "Unexpected error during Active Authentication: ${e.message}")
                 }
 
                 // 7. Perform Passive / Active Authentication verification if trust store is provided
