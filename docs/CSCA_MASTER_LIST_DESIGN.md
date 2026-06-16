@@ -39,16 +39,16 @@ A Master List itself is digitally signed. Before trusting the certificates insid
 
 ```mermaid
 graph TD
-    A[Receive Master List Bytes] --> B[Parse CMSSignedData]
-    B --> C[Extract Signer Certificate]
-    C --> D{Is Signer Trusted?}
-    D -- Yes --> E[Verify Master List Signature]
-    D -- No/Self-Signed --> F{Check Trust Anchors or Fingerprint}
-    F -- Valid Anchor --> E
-    F -- Invalid/Unknown --> G[Reject Master List]
-    E --> H{Is Signature Valid?}
-    H -- Yes --> I[Load Enclosed Certificates to KeyStore]
-    H -- No --> G
+    A["Receive Master List Bytes"] --> B["Parse CMSSignedData"]
+    B --> C["Extract Signer Certificate"]
+    C --> D{"Is Signer Trusted?"}
+    D -- "Yes" --> E["Verify Master List Signature"]
+    D -- "No/Self-Signed" --> F{"Check Trust Anchors or Fingerprint"}
+    F -- "Valid Anchor" --> E
+    F -- "Invalid/Unknown" --> G["Reject Master List"]
+    E --> H{"Is Signature Valid?"}
+    H -- "Yes" --> I["Load Enclosed Certificates to KeyStore"]
+    H -- "No" --> G
 ```
 
 1. **Signer Extraction**: Retrieve the `SignerInformation` from `CMSSignedData.signerInfos`. Match the signer's identity (`SignerId`) with certificates in the master list's certificate block using `SubjectKeyIdentifier` or `IssuerAndSerialNumber`.

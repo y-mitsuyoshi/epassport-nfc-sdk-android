@@ -10,21 +10,21 @@
 
 ```mermaid
 graph LR
-    subgraph Client [クライアント (Android/SDK)]
+    subgraph Client ["クライアント (Android/SDK)"]
         App[ホストアプリ] <-->|NFC読取| SDK[NFC SDK]
         App <-->|別SDK| Selfie[Livenessセルフィー撮影]
     end
 
-    subgraph Backend [eKYC バックエンド]
+    subgraph Backend ["eKYC バックエンド"]
         Server[検証サーバー]
         KMS[AWS KMS / HSM]
         Rekog[AWS Rekognition]
     end
 
-    App -->|1. セッション開始| Server
-    Server -->|2. チャレンジ/公開鍵| App
-    SDK -->|3. JWE暗号化ペイロード| App
-    App -->|4. 検証リクエスト (JWE + セルフィー)| Server
+    App -->|"1. セッション開始"| Server
+    Server -->|"2. チャレンジ/公開鍵"| App
+    SDK -->|"3. JWE暗号化ペイロード"| App
+    App -->|"4. 検証リクエスト (JWE + セルフィー)"| Server
     Server <-->|JWE復号| KMS
     Server <-->|顔比較| Rekog
 ```
@@ -98,10 +98,10 @@ when (result) {
 
 ```mermaid
 graph TD
-    Request[検証リクエスト] --> Decrypt[1. JWE復号]
-    Decrypt --> PA[2. Passive Authentication]
-    Decrypt --> AA[3. Active Authentication]
-    Decrypt --> Face[4. 顔照合 (Rekognition)]
+    Request[検証リクエスト] --> Decrypt["1. JWE復号"]
+    Decrypt --> PA["2. Passive Authentication"]
+    Decrypt --> AA["3. Active Authentication"]
+    Decrypt --> Face["4. 顔照合 (Rekognition)"]
     
     PA --> CSCA[CSCA 信頼チェーン検証]
     PA --> Hash[SODと各DGのハッシュ照合]
@@ -109,9 +109,9 @@ graph TD
     
     AA --> Challenge[チャレンジ署名検証]
     
-    Face --> Match{95%以上一致?}
+    Face --> Match{"95%以上一致?"}
     
-    CSCA & Hash & CRL & Challenge & Match --> Result{すべて合格?}
+    CSCA & Hash & CRL & Challenge & Match --> Result{"すべて合格?"}
     Result -->|Yes| OK[本人確認成功]
     Result -->|No| NG[本人確認失敗]
 ```

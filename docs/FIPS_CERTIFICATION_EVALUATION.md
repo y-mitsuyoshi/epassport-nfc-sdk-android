@@ -64,12 +64,12 @@ We recommend a **Split-Architecture Go/No-Go** approach:
 
 ```mermaid
 graph TD
-    A[FIPS Compliance Request] --> B{Is Server-Side FIPS validation sufficient?}
-    B -- Yes --> C[FIPS-Validated Cloud Infrastructure & bc-fips on Server]
-    B -- No --> D{Is client-side US Government / DoD the target?}
-    D -- Yes --> E[Go: Migrate Android SDK to bc-fips & pursue CMVP]
-    D -- No --> F[No-Go: Rely on Conscrypt/BoringSSL for Client & bc-fips for Server]
-    C --> G[Implement HSM + Server bc-fips]
+    A["FIPS Compliance Request"] --> B{"Is Server-Side FIPS validation sufficient?"}
+    B -- "Yes" --> C["FIPS-Validated Cloud Infrastructure & bc-fips on Server"]
+    B -- "No" --> D{"Is client-side US Government / DoD the target?"}
+    D -- "Yes" --> E["Go: Migrate Android SDK to bc-fips & pursue CMVP"]
+    D -- "No" --> F["No-Go: Rely on Conscrypt/BoringSSL for Client & bc-fips for Server"]
+    C --> G["Implement HSM + Server bc-fips"]
 ```
 
 ### 5.1 Recommendations

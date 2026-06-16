@@ -27,37 +27,37 @@ Active Authentication は、チップ内部のセキュアエリアに隠され�
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as ユーザー (パスポート)
-    participant App as ホストアプリ (Host App)
-    participant SDK as ePassport SDK
-    participant Chip as パスポート ICチップ
-    participant Server as eKYC 検証サーバー
+    actor User as "ユーザー (パスポート)"
+    participant App as "ホストアプリ (Host App)"
+    participant SDK as "ePassport SDK"
+    participant Chip as "パスポート ICチップ"
+    participant Server as "eKYC 検証サーバー"
 
     Note over App, Server: 1. チャレンジ（乱数）の取得
-    App->>Server: 認証セッション開始リクエスト (POST /session/start)
-    Server-->>App: ワンタイム・チャレンジ (8バイトの乱数 Base64)
+    App->>Server: "認証セッション開始リクエスト (POST /session/start)"
+    Server-->>App: "ワンタイム・チャレンジ (8バイトの乱数 Base64)"
 
     Note over User, SDK: 2. NFCによる生データ収集
-    App->>SDK: EPassportReader.read(tag, mrz, challenge)
-    SDK->>Chip: [NFC] DG15 (公開鍵情報) を読み出し
-    Chip-->>SDK: DG15 バイナリデータ (publicKeyInfo)
+    App->>SDK: "EPassportReader.read(tag, mrz, challenge)"
+    SDK->>Chip: "[NFC] DG15 (公開鍵情報) を読み出し"
+    Chip-->>SDK: "DG15 バイナリデータ (publicKeyInfo)"
     
-    SDK->>Chip: [NFC] INTERNAL AUTHENTICATE コマンド (チャレンジ送信)
+    SDK->>Chip: "[NFC] INTERNAL AUTHENTICATE コマンド (チャレンジ送信)"
     Note over Chip: チップ内の秘密鍵で署名を生成
-    Chip-->>SDK: 署名データ (signature)
+    Chip-->>SDK: "署名データ (signature)"
     
-    SDK-->>App: ReadResult.Success(PassportData)
+    SDK-->>App: "ReadResult.Success(PassportData)"
 
     Note over App, Server: 3. サーバー側での真贋検証
-    App->>App: passportData.toServerTransferData() で送信データ取得
-    App->>Server: パスポートデータとAAデータを送信 (POST /verify/passport)
+    App->>App: "passportData.toServerTransferData() で送信データ取得"
+    App->>Server: "パスポートデータとAAデータを送信 (POST /verify/passport)"
     
     Note over Server: サーバー側で検証を実行<br/>(1. 公開鍵の復元)<br/>(2. 署名の数学的検証)<br/>(3. チャレンジのワンタイム検証)
     
     alt 検証成功 (本物)
-        Server-->>App: 認証成功 (200 OK)
+        Server-->>App: "認証成功 (200 OK)"
     else 検証失敗 (クローンチップ / 不正)
-        Server-->>App: 認証失敗 (400 Bad Request)
+        Server-->>App: "認証失敗 (400 Bad Request)"
     end
 ```
 
