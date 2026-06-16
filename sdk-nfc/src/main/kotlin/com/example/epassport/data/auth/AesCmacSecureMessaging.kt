@@ -79,9 +79,22 @@ class AesCmacSecureMessaging(
 
         // Encrypt DO87 data if present
         var do87: ByteArray? = null
-        if (command.size > 5) {
-            val lc = command[4].toInt() and 0xFF
-            val data = command.copyOfRange(5, 5 + lc)
+        val (lc, dataOffset) = when {
+            // Extended APDU with data: [CLA INS P1 P2 0x00 LcHi LcLo data...]
+            command.size > 7 && (command[4].toInt() and 0xFF) == 0x00 -> {
+                val lcVal = ((command[5].toInt() and 0xFF) shl 8) or (command[6].toInt() and 0xFF)
+                Pair(lcVal, 7)
+            }
+            // Short APDU with data: [CLA INS P1 P2 Lc data...]
+            command.size > 5 -> {
+                val lcVal = command[4].toInt() and 0xFF
+                Pair(lcVal, 5)
+            }
+            else -> Pair(0, -1)
+        }
+
+        if (lc > 0 && dataOffset > 0 && command.size >= dataOffset + lc) {
+            val data = command.copyOfRange(dataOffset, dataOffset + lc)
             val paddedData = CryptoUtils.pad(data)
             val encrypted = Cipher.getInstance("AES/CBC/NoPadding", bouncyCastleProvider).apply {
                 init(Cipher.ENCRYPT_MODE, SecretKeySpec(ksEnc, "AES"), IvParameterSpec(ByteArray(16)))
@@ -105,19 +118,38 @@ class AesCmacSecureMessaging(
         val do8e = byteArrayOf(0x8E.toByte(), 0x10.toByte()) + mac
 
         // Build protected APDU with dynamic Le
+        val isOriginalExtended = command.size >= 7 && (command[4].toInt() and 0xFF) == 0x00
+        val content = (do87 ?: byteArrayOf()) + (do97 ?: byteArrayOf()) + do8e
+        val useExtended = isOriginalExtended || (content.size > 255) || (originalLe > 256)
+
         val cmdStream = ByteArrayOutputStream()
         cmdStream.write(header)
-        val content = (do87 ?: byteArrayOf()) + (do97 ?: byteArrayOf()) + do8e
-        cmdStream.write(content.size)
+
+        if (useExtended) {
+            cmdStream.write(0x00)
+            cmdStream.write((content.size ushr 8) and 0xFF)
+            cmdStream.write(content.size and 0xFF)
+        } else {
+            cmdStream.write(content.size)
+        }
         cmdStream.write(content)
+
         val responseLe = if (originalLe > 0) {
-            if (originalLe > 255) {
-                byteArrayOf(0x00, 0x00)
+            if (useExtended) {
+                if (originalLe == 65536) {
+                    byteArrayOf(0x00, 0x00)
+                } else {
+                    byteArrayOf((originalLe ushr 8).toByte(), (originalLe and 0xFF).toByte())
+                }
             } else {
                 byteArrayOf(originalLe.toByte())
             }
         } else {
-            byteArrayOf(0x00)
+            if (useExtended) {
+                byteArrayOf(0x00, 0x00)
+            } else {
+                byteArrayOf(0x00)
+            }
         }
         cmdStream.write(responseLe)
 

@@ -88,7 +88,7 @@ class PaceAuthenticatorTest {
     fun kdf_producesExpectedLength() {
         val sharedSecret = byteArrayOf(0x01, 0x02, 0x03, 0x04)
         val nonce = byteArrayOf(0x05, 0x06, 0x07, 0x08)
-        val result = invoke<ByteArray>("kdf", sharedSecret, nonce, 128)
+        val result = invoke<ByteArray>("kdf", sharedSecret, nonce, 128, "SHA-1")
         assertEquals(32, result.size)
     }
 

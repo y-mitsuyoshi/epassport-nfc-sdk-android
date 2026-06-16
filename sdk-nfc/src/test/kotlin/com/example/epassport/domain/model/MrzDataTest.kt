@@ -105,4 +105,25 @@ class MrzDataTest {
         dob.fill('\u0000')
         doe.fill('\u0000')
     }
+
+    @Test
+    fun clear_zeroizesCanField() {
+        val docNum = "L898902C<".toCharArray()
+        val dob = "690806".toCharArray()
+        val doe = "940623".toCharArray()
+        val can = "123456".toCharArray()
+        val mrzData = MrzData(docNum, dob, doe, can)
+
+        mrzData.clear()
+
+        assertEquals('\u0000', mrzData.documentNumber[0])
+        assertEquals('\u0000', mrzData.dateOfBirth[0])
+        assertEquals('\u0000', mrzData.dateOfExpiry[0])
+        org.junit.Assert.assertNotNull(mrzData.can)
+        assertEquals('\u0000', mrzData.can!![0])
+        docNum.fill('\u0000')
+        dob.fill('\u0000')
+        doe.fill('\u0000')
+        can.fill('\u0000')
+    }
 }

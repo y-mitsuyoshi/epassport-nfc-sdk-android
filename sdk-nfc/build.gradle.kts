@@ -52,6 +52,7 @@ dependencies {
 
     // Runtime Application Self-Protection (RASP): root, emulator, debug detection
     implementation(libs.rootbeer.lib)
+    implementation(libs.play.integrity)
 
     // JSON serialization for E2EE server transfer payloads
     implementation(libs.kotlinx.serialization.json)
