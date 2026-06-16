@@ -21,6 +21,12 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.77")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.77")
 
+    // AWS KMS
+    implementation("software.amazon.awssdk:kms:2.25.0")
+
+    // GCP Cloud KMS
+    implementation("com.google.cloud:google-cloud-kms:2.50.0")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test:3.2.0")
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")

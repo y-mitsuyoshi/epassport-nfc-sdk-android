@@ -81,6 +81,16 @@ class CscaTrustStoreTest {
     }
 
     @Test
+    fun loadMasterList_withCorruptedBytes_throws() {
+        val corruptedBytes = byteArrayOf(0x00, 0x01, 0x02, 0x03)
+
+        val exception = assertThrows(IllegalArgumentException::class.java) {
+            CscaTrustStore().loadMasterList(corruptedBytes)
+        }
+        assertTrue(exception.message?.contains("Failed to load CSCA master list") ?: false)
+    }
+
+    @Test
     fun verifySodSignature_withUntrustedSigner_returnsFalse() {
         val otherKeyPair = generateRsaKeyPair()
         val otherCert = createSelfSignedCert(
@@ -108,7 +118,7 @@ class CscaTrustStoreTest {
         isCa: Boolean
     ): X509Certificate {
         val notBefore = Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000)
-        val notAfter = Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000)
+        val notAfter = Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)
         val serial = BigInteger.valueOf(System.currentTimeMillis())
 
         val builder = X509v3CertificateBuilder(

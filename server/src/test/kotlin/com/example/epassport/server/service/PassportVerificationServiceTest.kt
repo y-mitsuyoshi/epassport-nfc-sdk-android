@@ -102,6 +102,105 @@ class PassportVerificationServiceTest {
         assert(result.failureReason == PassportVerificationService.FailureReason.DG_HASH_MISMATCH)
     }
 
+    @Test
+    fun verify_withInvalidSodSignature_returnsFailure() {
+        val dg1 = byteArrayOf(0x01, 0x02)
+        val dataGroups = mapOf(1 to dg1)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        // Corrupt SOD bytes
+        val corruptedSod = sod.copyOf()
+        corruptedSod[corruptedSod.size - 1] = (corruptedSod[corruptedSod.size - 1] + 1).toByte()
+
+        val request = PassportVerificationService.VerificationRequest(
+            sodBase64 = Base64.getEncoder().encodeToString(corruptedSod),
+            dataGroups = dataGroups.mapValues { Base64.getEncoder().encodeToString(it.value) },
+            aaPublicKeyBase64 = null,
+            aaChallengeBase64 = null,
+            aaSignatureBase64 = null,
+            cscaMasterListBase64 = Base64.getEncoder().encodeToString(createMasterList(cscaCert))
+        )
+
+        val result = service.verify(request)
+
+        assert(!result.successful)
+        assert(!result.paSuccess)
+        assert(result.failureReason == PassportVerificationService.FailureReason.SOD_SIGNATURE_INVALID)
+    }
+
+    @Test
+    fun verify_withMissingDg15_returnsFailure() {
+        val dg1 = byteArrayOf(0x01, 0x02)
+        val dataGroups = mapOf(1 to dg1)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+
+        val request = PassportVerificationService.VerificationRequest(
+            sodBase64 = Base64.getEncoder().encodeToString(sod),
+            dataGroups = dataGroups.mapValues { Base64.getEncoder().encodeToString(it.value) },
+            aaPublicKeyBase64 = Base64.getEncoder().encodeToString(aaKeyPair.public.encoded),
+            aaChallengeBase64 = Base64.getEncoder().encodeToString(byteArrayOf(0x11)),
+            aaSignatureBase64 = Base64.getEncoder().encodeToString(byteArrayOf(0x22)),
+            cscaMasterListBase64 = null
+        )
+
+        val result = service.verify(request)
+
+        assert(!result.successful)
+        assert(result.paSuccess)
+        assert(result.failureReason == PassportVerificationService.FailureReason.AA_DG15_MISSING)
+    }
+
+    @Test
+    fun verify_withAaPublicKeyMismatch_returnsFailure() {
+        val dg1 = byteArrayOf(0x01, 0x02)
+        val dg15 = aaKeyPair.public.encoded
+        val dataGroups = mapOf(1 to dg1, 15 to dg15)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+
+        // Try to verify with a different public key
+        val wrongKeyPair = generateRsaKeyPair()
+        val request = PassportVerificationService.VerificationRequest(
+            sodBase64 = Base64.getEncoder().encodeToString(sod),
+            dataGroups = dataGroups.mapValues { Base64.getEncoder().encodeToString(it.value) },
+            aaPublicKeyBase64 = Base64.getEncoder().encodeToString(wrongKeyPair.public.encoded),
+            aaChallengeBase64 = Base64.getEncoder().encodeToString(byteArrayOf(0x11)),
+            aaSignatureBase64 = Base64.getEncoder().encodeToString(byteArrayOf(0x22)),
+            cscaMasterListBase64 = null
+        )
+
+        val result = service.verify(request)
+
+        assert(!result.successful)
+        assert(result.paSuccess)
+        assert(result.failureReason == PassportVerificationService.FailureReason.AA_PUBLIC_KEY_MISMATCH)
+    }
+
+    @Test
+    fun verify_withInvalidAaSignature_returnsFailure() {
+        val dg1 = byteArrayOf(0x01, 0x02)
+        val dg15 = aaKeyPair.public.encoded
+        val dataGroups = mapOf(1 to dg1, 15 to dg15)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+
+        val challenge = byteArrayOf(0x11, 0x22)
+        val invalidSignature = byteArrayOf(0x00, 0x01, 0x02)
+
+        val request = PassportVerificationService.VerificationRequest(
+            sodBase64 = Base64.getEncoder().encodeToString(sod),
+            dataGroups = dataGroups.mapValues { Base64.getEncoder().encodeToString(it.value) },
+            aaPublicKeyBase64 = Base64.getEncoder().encodeToString(dg15),
+            aaChallengeBase64 = Base64.getEncoder().encodeToString(challenge),
+            aaSignatureBase64 = Base64.getEncoder().encodeToString(invalidSignature),
+            cscaMasterListBase64 = null
+        )
+
+        val result = service.verify(request)
+
+        assert(!result.successful)
+        assert(result.paSuccess)
+        assert(result.aaSuccess == false)
+        assert(result.failureReason == PassportVerificationService.FailureReason.AA_SIGNATURE_INVALID)
+    }
+
     private fun generateRsaKeyPair(): KeyPair {
         return KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
     }
@@ -113,7 +212,7 @@ class PassportVerificationServiceTest {
         isCa: Boolean
     ): X509Certificate {
         val notBefore = Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000)
-        val notAfter = Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000)
+        val notAfter = Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)
         val serial = BigInteger.valueOf(System.currentTimeMillis())
 
         val builder = X509v3CertificateBuilder(

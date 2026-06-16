@@ -25,24 +25,30 @@ class CscaTrustStore {
         .setProvider(BouncyCastleProvider())
 
     fun loadMasterList(masterListBytes: ByteArray) {
-        val cmsSignedData = CMSSignedData(masterListBytes)
-        val certificates = cmsSignedData.certificates
-            ?.getMatches(null)
-            ?.map { certificateConverter.getCertificate(it as X509CertificateHolder) }
-            ?: emptyList()
+        try {
+            val cmsSignedData = CMSSignedData(masterListBytes)
+            val certificates = cmsSignedData.certificates
+                ?.getMatches(null)
+                ?.map { certificateConverter.getCertificate(it as X509CertificateHolder) }
+                ?: emptyList()
 
-        val signer = cmsSignedData.signerInfos.signers.firstOrNull()
-            ?: throw IllegalArgumentException("Master list contains no signer information")
+            val signer = cmsSignedData.signerInfos.signers.firstOrNull()
+                ?: throw IllegalArgumentException("Master list contains no signer information")
 
-        val signerCert = findSignerCertificate(signer, certificates)
-            ?: throw IllegalArgumentException("Signer certificate not found in master list")
+            val signerCert = findSignerCertificate(signer, certificates)
+                ?: throw IllegalArgumentException("Signer certificate not found in master list")
 
-        if (!verifyMasterListSignature(cmsSignedData, signer, signerCert)) {
-            throw IllegalArgumentException("Master list signature verification failed")
-        }
+            if (!verifyMasterListSignature(cmsSignedData, signer, signerCert)) {
+                throw IllegalArgumentException("Master list signature verification failed")
+            }
 
-        for (cert in certificates) {
-            addCertificate(cert)
+            for (cert in certificates) {
+                addCertificate(cert)
+            }
+        } catch (e: IllegalArgumentException) {
+            throw e
+        } catch (e: Exception) {
+            throw IllegalArgumentException("Failed to load CSCA master list", e)
         }
     }
 
@@ -114,6 +120,7 @@ class CscaTrustStore {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun verifyMasterListSignature(
         cmsSignedData: CMSSignedData,
         signer: SignerInformation,

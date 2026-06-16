@@ -23,6 +23,8 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -72,6 +74,20 @@ class PassportVerifierTest {
     }
 
     @Test
+    fun verifyPassiveAuthentication_withEmptyTrustStore_returnsFailure() {
+        val dg1Bytes = byteArrayOf(0x01, 0x02, 0x03)
+        val dataGroups = mapOf(1 to dg1Bytes)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        val emptyTrustStore = CscaTrustStore()
+
+        val result = verifier.verifyPassiveAuthentication(sod, dataGroups, emptyTrustStore)
+
+        assertFalse(result.success)
+        assertEquals("PA", result.stepName)
+        assertTrue(result.detail.contains("CSCA trust store is empty", ignoreCase = true))
+    }
+
+    @Test
     fun verifyPassiveAuthentication_withInvalidHash_returnsFailure() {
         val dg1Bytes = byteArrayOf(0x01, 0x02, 0x03)
         val correctGroups = mapOf(1 to dg1Bytes)
@@ -100,6 +116,7 @@ class PassportVerifierTest {
         val result = verifier.verifyPassiveAuthentication(sod, mapOf(1 to byteArrayOf(0x01)), trustStore)
 
         assertFalse(result.success)
+        assertTrue(result.detail.contains("SOD signature verification failed", ignoreCase = true))
     }
 
     @Test
@@ -143,10 +160,72 @@ class PassportVerifierTest {
         val result = verifier.verify(sod, dataGroups, aaData, trustStore)
 
         assertFalse(result.isSuccessful)
-        assertTrue(
-            result.failureReason?.contains("DG15", ignoreCase = true) ?: false ||
-            result.failureReason?.contains("public key", ignoreCase = true) ?: false
+        assertTrue(result.passiveAuthentication.success)
+        assertNull(result.activeAuthentication)
+        assertEquals(
+            "AA public key info does not match read DG15 (possible tampering)",
+            result.failureReason
         )
+    }
+
+    @Test
+    fun verify_withAaAndNoDg15_returnsFailure() {
+        val dg1Bytes = byteArrayOf(0x01, 0x02, 0x03)
+        val dg2Bytes = byteArrayOf(0x04, 0x05, 0x06)
+        val dataGroups = mapOf(1 to dg1Bytes, 2 to dg2Bytes)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+
+        val challenge = byteArrayOf(0x11, 0x22, 0x33, 0x44)
+        val signature = signWithRsa(aaKeyPair, challenge)
+        val aaData = ActiveAuthenticationData(aaKeyPair.public.encoded, challenge, signature)
+
+        val trustStore = CscaTrustStore().apply { addCertificate(cscaCert) }
+
+        val result = verifier.verify(sod, dataGroups, aaData, trustStore)
+
+        assertFalse(result.isSuccessful)
+        assertTrue(result.passiveAuthentication.success)
+        assertNull(result.activeAuthentication)
+        assertTrue(result.failureReason?.contains("DG15 not provided", ignoreCase = true) ?: false)
+    }
+
+    @Test
+    fun verify_withAaOnly_skipsAaAndReturnsSuccess() {
+        val dg1Bytes = byteArrayOf(0x01, 0x02, 0x03)
+        val dg2Bytes = byteArrayOf(0x04, 0x05, 0x06)
+        val dataGroups = mapOf(1 to dg1Bytes, 2 to dg2Bytes)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+
+        val trustStore = CscaTrustStore().apply { addCertificate(cscaCert) }
+
+        val result = verifier.verify(sod, dataGroups, null, trustStore)
+
+        assertTrue(result.isSuccessful)
+        assertTrue(result.passiveAuthentication.success)
+        assertNull(result.activeAuthentication)
+        assertNull(result.failureReason)
+    }
+
+    @Test
+    fun verify_withAaAndInvalidSignature_returnsFailure() {
+        val dg1Bytes = byteArrayOf(0x01, 0x02, 0x03)
+        val dg2Bytes = byteArrayOf(0x04, 0x05, 0x06)
+        val dg15Bytes = aaKeyPair.public.encoded
+        val dataGroups = mapOf(1 to dg1Bytes, 2 to dg2Bytes, 15 to dg15Bytes)
+        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+
+        val challenge = byteArrayOf(0x11, 0x22, 0x33, 0x44)
+        val badSignature = signWithRsa(aaKeyPair, byteArrayOf(0xFF.toByte(), 0xEE.toByte(), 0xDD.toByte()))
+        val aaData = ActiveAuthenticationData(dg15Bytes, challenge, badSignature)
+
+        val trustStore = CscaTrustStore().apply { addCertificate(cscaCert) }
+
+        val result = verifier.verify(sod, dataGroups, aaData, trustStore)
+
+        assertFalse(result.isSuccessful)
+        assertTrue(result.passiveAuthentication.success)
+        assertNotNull(result.activeAuthentication)
+        assertFalse(result.activeAuthentication!!.success)
     }
 
     private fun generateRsaKeyPair(): KeyPair {

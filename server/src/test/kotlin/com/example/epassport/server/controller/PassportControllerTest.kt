@@ -1,5 +1,6 @@
 package com.example.epassport.server.controller
 
+import com.example.epassport.server.service.E2EEDecryptionService
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -11,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import java.security.KeyPairGenerator
 import java.security.Security
+import java.security.interfaces.RSAPrivateKey
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -23,32 +25,34 @@ class PassportControllerTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
 
+    private lateinit var keyPair: java.security.KeyPair
+    private lateinit var privateKeyBase64: String
+
     @BeforeEach
     fun setUp() {
         Security.addProvider(BouncyCastleProvider())
+        keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        privateKeyBase64 = Base64.getEncoder().encodeToString(keyPair.private.encoded)
     }
 
     @Test
     fun decrypt_returnsPlaintext() {
         val plaintext = "sensitive passport data"
-        val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
         val jwe = createJwe(plaintext.toByteArray(Charsets.UTF_8), keyPair.public)
-        val privateKeyBase64 = Base64.getEncoder().encodeToString(keyPair.private.encoded)
 
-        val requestBody = """
-            {
-                "jwe": "$jwe",
-                "privateKeyBase64": "$privateKeyBase64"
+        // Build controller with test key provider
+        val controller = PassportController(
+            decryptionService = E2EEDecryptionService(),
+            privateKeyProvider = {
+                val keyBytes = Base64.getDecoder().decode(privateKeyBase64)
+                val spec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+                val keyFactory = java.security.KeyFactory.getInstance("RSA")
+                keyFactory.generatePrivate(spec) as RSAPrivateKey
             }
-        """.trimIndent()
+        )
 
-        mockMvc.post("/api/v1/passport/decrypt") {
-            contentType = MediaType.APPLICATION_JSON
-            content = requestBody
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.plaintext") { value(plaintext) }
-        }
+        val response = controller.decrypt(PassportController.DecryptRequest(jwe))
+        assert(response.body?.plaintext == plaintext) { "Expected plaintext to match" }
     }
 
     private fun createJwe(plaintext: ByteArray, publicKey: java.security.PublicKey): String {
