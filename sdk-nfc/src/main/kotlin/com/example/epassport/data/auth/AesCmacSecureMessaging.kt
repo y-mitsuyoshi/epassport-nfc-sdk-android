@@ -7,9 +7,11 @@ import com.example.epassport.util.CryptoUtils
 import org.bouncycastle.crypto.engines.AESEngine
 import org.bouncycastle.crypto.macs.CMac
 import org.bouncycastle.crypto.params.KeyParameter
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.security.MessageDigest
+import java.security.Security
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -28,6 +30,9 @@ class AesCmacSecureMessaging(
 ) : NfcTransceiver, java.io.Closeable {
 
     private val ssc: ByteArray = ssc.copyOf()
+    private val bouncyCastleProvider = BouncyCastleProvider().also {
+        if (Security.getProvider(it.name) == null) Security.addProvider(it)
+    }
 
     override fun close() {
         ksEnc.fill(0)
@@ -66,7 +71,7 @@ class AesCmacSecureMessaging(
             val lc = command[4].toInt() and 0xFF
             val data = command.copyOfRange(5, 5 + lc)
             val paddedData = CryptoUtils.pad(data)
-            val encrypted = Cipher.getInstance("AES/CBC/NoPadding", "BC").apply {
+            val encrypted = Cipher.getInstance("AES/CBC/NoPadding", bouncyCastleProvider).apply {
                 init(Cipher.ENCRYPT_MODE, SecretKeySpec(ksEnc, "AES"), IvParameterSpec(ByteArray(16)))
             }.doFinal(paddedData)
 
@@ -142,7 +147,7 @@ class AesCmacSecureMessaging(
                 throw AuthenticationException("Unsupported padding indicator")
             }
             val encrypted = do87Value.copyOfRange(1, do87Value.size)
-            val decryptedWithPad = Cipher.getInstance("AES/CBC/NoPadding", "BC").apply {
+            val decryptedWithPad = Cipher.getInstance("AES/CBC/NoPadding", bouncyCastleProvider).apply {
                 init(Cipher.DECRYPT_MODE, SecretKeySpec(ksEnc, "AES"), IvParameterSpec(ByteArray(16)))
             }.doFinal(encrypted)
             val decrypted = CryptoUtils.unpad(decryptedWithPad)
@@ -181,7 +186,7 @@ class AesCmacSecureMessaging(
     }
 
     private fun calculateCmac(key: ByteArray, data: ByteArray): ByteArray {
-        val mac = CMac(AESEngine())
+        val mac = CMac(AESEngine.newInstance())
         mac.init(KeyParameter(key))
         mac.update(data, 0, data.size)
         val result = ByteArray(16)

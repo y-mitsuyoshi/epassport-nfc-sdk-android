@@ -155,6 +155,7 @@ class MainActivity : ComponentActivity() {
             text = "手動入力"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
+            filterTouchesWhenObscured = true
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { switchMode(InputMode.MANUAL) }
         }
@@ -163,6 +164,7 @@ class MainActivity : ComponentActivity() {
             text = "カメラOCR"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
+            filterTouchesWhenObscured = true
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { switchMode(InputMode.CAMERA) }
         }
@@ -235,6 +237,7 @@ class MainActivity : ComponentActivity() {
             textSize = 16f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
+            filterTouchesWhenObscured = true
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#2563EB")) // Royal Blue
                 cornerRadius = 24f
@@ -420,10 +423,11 @@ class MainActivity : ComponentActivity() {
                     try {
                         val parsed = MrzParser.parse(mrzText)
                         scannedMrzData = MrzData(
-                            parsed.documentNumber.toCharArray(),
-                            parsed.dateOfBirth.toCharArray(),
-                            parsed.dateOfExpiry.toCharArray()
+                            parsed.documentNumber,
+                            parsed.dateOfBirth,
+                            parsed.dateOfExpiry
                         )
+                        parsed.clear()
                         
                         // Automatically transit to NFC scan ready
                         triggerScanReady()
@@ -478,6 +482,7 @@ class MainActivity : ComponentActivity() {
             setTextColor(Color.parseColor("#F8FAFC")) // Slate 50
             textSize = 15f
             setPadding(24, 24, 24, 24)
+            filterTouchesWhenObscured = true
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#0F172A")) // Slate 900
                 cornerRadius = 16f

@@ -32,6 +32,18 @@ class E2EEDecryptionServiceTest {
         assertArrayEquals(plaintext, decrypted)
     }
 
+    @Test
+    fun decrypt_withKmsProvider_returnsPlaintext() {
+        val plaintext = "sensitive passport data with kms".toByteArray(Charsets.UTF_8)
+        val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+
+        val jwe = createJwe(plaintext, keyPair.public)
+        val kmsProvider = MockKmsDecryptionProvider(keyPair.private)
+        val decrypted = service.decrypt(jwe, kmsProvider)
+
+        assertArrayEquals(plaintext, decrypted)
+    }
+
     private fun createJwe(plaintext: ByteArray, publicKey: java.security.PublicKey): String {
         val aesKey = ByteArray(32).apply { java.security.SecureRandom().nextBytes(this) }
         val iv = ByteArray(12).apply { java.security.SecureRandom().nextBytes(this) }

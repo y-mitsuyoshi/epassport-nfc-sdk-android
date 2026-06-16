@@ -10,11 +10,40 @@ object MrzParser {
     /**
      * パース後の MRZ 抽出結果データモデル。
      */
-    data class ParsedMrz(
-        val documentNumber: String, // 旅券番号
-        val dateOfBirth: String,    // 生年月日 (YYMMDD)
-        val dateOfExpiry: String    // 有効期限 (YYMMDD)
-    )
+    class ParsedMrz(
+        documentNumber: CharArray,
+        dateOfBirth: CharArray,
+        dateOfExpiry: CharArray
+    ) {
+        val documentNumber: CharArray = documentNumber.copyOf()
+        val dateOfBirth: CharArray = dateOfBirth.copyOf()
+        val dateOfExpiry: CharArray = dateOfExpiry.copyOf()
+
+        fun clear() {
+            documentNumber.fill('\u0000')
+            dateOfBirth.fill('\u0000')
+            dateOfExpiry.fill('\u0000')
+        }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is ParsedMrz) return false
+            return documentNumber.contentEquals(other.documentNumber) &&
+                    dateOfBirth.contentEquals(other.dateOfBirth) &&
+                    dateOfExpiry.contentEquals(other.dateOfExpiry)
+        }
+
+        override fun hashCode(): Int {
+            var result = documentNumber.contentHashCode()
+            result = 31 * result + dateOfBirth.contentHashCode()
+            result = 31 * result + dateOfExpiry.contentHashCode()
+            return result
+        }
+
+        override fun toString(): String {
+            return "ParsedMrz(documentNumber=***, dateOfBirth=***, dateOfExpiry=***)"
+        }
+    }
 
     /**
      * MRZテキストからフォーマットを自動判定してデータを抽出します。
@@ -52,13 +81,20 @@ object MrzParser {
         require(line2.length >= 20) { "Invalid TD1 Line 2 length: ${line2.length}" }
 
         // 文書番号: Line 1 の index 5 から 14 文字目まで（9文字）
-        val documentNumber = line1.substring(5, 14).replace("<", "")
+        val docNumStr = line1.substring(5, 14).replace("<", "")
+        val documentNumber = docNumStr.toCharArray()
 
         // Line 2: DOB [6, 12), DOE [14, 20)
-        val dateOfBirth = line2.substring(6, 12)
-        val dateOfExpiry = line2.substring(14, 20)
+        val dobStr = line2.substring(6, 12)
+        val doeStr = line2.substring(14, 20)
+        val dateOfBirth = dobStr.toCharArray()
+        val dateOfExpiry = doeStr.toCharArray()
 
-        return ParsedMrz(documentNumber, dateOfBirth, dateOfExpiry)
+        val parsed = ParsedMrz(documentNumber, dateOfBirth, dateOfExpiry)
+        documentNumber.fill('\u0000')
+        dateOfBirth.fill('\u0000')
+        dateOfExpiry.fill('\u0000')
+        return parsed
     }
 
     /**
@@ -72,17 +108,24 @@ object MrzParser {
             "Invalid TD2 Line 2 length: expected >= 27 chars, got ${line2.length}"
         }
 
-        val documentNumber = line2.substring(0, 9).replace("<", "")
-        val dateOfBirth = line2.substring(13, 19)
-        val dateOfExpiry = line2.substring(21, 27)
+        val docNumStr = line2.substring(0, 9).replace("<", "")
+        val documentNumber = docNumStr.toCharArray()
+        val dobStr = line2.substring(13, 19)
+        val doeStr = line2.substring(21, 27)
+        val dateOfBirth = dobStr.toCharArray()
+        val dateOfExpiry = doeStr.toCharArray()
 
-        return ParsedMrz(documentNumber, dateOfBirth, dateOfExpiry)
+        val parsed = ParsedMrz(documentNumber, dateOfBirth, dateOfExpiry)
+        documentNumber.fill('\u0000')
+        dateOfBirth.fill('\u0000')
+        dateOfExpiry.fill('\u0000')
+        return parsed
     }
 
     /**
      * TD3 / MRV-A (2行×44文字) のパース。
      *
-     * Line 2: DocNo [0, 9), DOB [13, 19), DOE [28, 34)
+     * Line 2: DocNo [0, 9), DOB [13, 19), DOE [21, 27)
      */
     private fun parseTd3(lines: List<String>): ParsedMrz {
         val line2 = lines[1]
@@ -90,10 +133,17 @@ object MrzParser {
             "Invalid TD3 Line 2 length: expected >= 27 chars, got ${line2.length}"
         }
 
-        val documentNumber = line2.substring(0, 9).replace("<", "")
-        val dateOfBirth = line2.substring(13, 19)
-        val dateOfExpiry = line2.substring(21, 27)
+        val docNumStr = line2.substring(0, 9).replace("<", "")
+        val documentNumber = docNumStr.toCharArray()
+        val dobStr = line2.substring(13, 19)
+        val doeStr = line2.substring(21, 27)
+        val dateOfBirth = dobStr.toCharArray()
+        val dateOfExpiry = doeStr.toCharArray()
 
-        return ParsedMrz(documentNumber, dateOfBirth, dateOfExpiry)
+        val parsed = ParsedMrz(documentNumber, dateOfBirth, dateOfExpiry)
+        documentNumber.fill('\u0000')
+        dateOfBirth.fill('\u0000')
+        dateOfExpiry.fill('\u0000')
+        return parsed
     }
 }

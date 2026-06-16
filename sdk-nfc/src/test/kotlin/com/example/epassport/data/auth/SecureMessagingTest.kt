@@ -156,6 +156,14 @@ class SecureMessagingTest {
         val r3 = sm.parseApdu(byteArrayOf(0x00, 0xB0.toByte(), 0x00, 0x00, 0x00, 0x00, 0x00))
         assertEquals(65536, r3.le)
 
+        // Unsupported Extended Lc+data (should throw IllegalArgumentException)
+        try {
+            sm.parseApdu(byteArrayOf(0x00, 0xB0.toByte(), 0x00, 0x00, 0x00, 0x00, 0x02, 0x11, 0x22, 0x00, 0x00))
+            org.junit.Assert.fail("Expected IllegalArgumentException to be thrown")
+        } catch (e: IllegalArgumentException) {
+            assertEquals("Extended Lc+data APDU is not supported by this SecureMessaging implementation", e.message)
+        }
+
         sm.close()
     }
 }

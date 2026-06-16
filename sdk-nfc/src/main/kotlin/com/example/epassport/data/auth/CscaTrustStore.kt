@@ -170,6 +170,7 @@ class CscaTrustStore {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun verifyMasterListSignature(
         cmsSignedData: CMSSignedData,
         signer: SignerInformation,

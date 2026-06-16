@@ -24,13 +24,13 @@ class E2EEDecryptionService {
     }
 
     /**
-     * JWE Compact Serialization 風の文字列を秘密鍵で復号する。
+     * JWE Compact Serialization 風の文字列を復号プロバイダー（HSM/KMS 等）を用いて復号する。
      *
      * @param jwe JWE 文字列（header.encryptedKey.iv.ciphertext.tag）
-     * @param privateKey RSA 秘密鍵
+     * @param kmsProvider KMS 復号プロバイダー
      * @return 平文バイト列
      */
-    fun decrypt(jwe: String, privateKey: PrivateKey): ByteArray {
+    fun decrypt(jwe: String, kmsProvider: KmsDecryptionProvider): ByteArray {
         val parts = jwe.split(".")
         require(parts.size == 5) { "Invalid JWE format: expected 5 parts, got ${parts.size}" }
 
@@ -39,9 +39,7 @@ class E2EEDecryptionService {
         val ciphertext = base64UrlDecode(parts[3])
         val authTag = base64UrlDecode(parts[4])
 
-        val keyCipher = Cipher.getInstance("RSA/ECB/OAEPwithSHA256andMGF1Padding", "BC")
-        keyCipher.init(Cipher.DECRYPT_MODE, privateKey)
-        val aesKey = keyCipher.doFinal(encryptedKey)
+        val aesKey = kmsProvider.decryptRsaOaep(encryptedKey)
 
         return try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding", "BC")
@@ -54,6 +52,17 @@ class E2EEDecryptionService {
         } finally {
             aesKey.fill(0)
         }
+    }
+
+    /**
+     * JWE Compact Serialization 風の文字列を秘密鍵で復号する（下位互換性およびモック用）。
+     *
+     * @param jwe JWE 文字列（header.encryptedKey.iv.ciphertext.tag）
+     * @param privateKey RSA 秘密鍵
+     * @return 平文バイト列
+     */
+    fun decrypt(jwe: String, privateKey: PrivateKey): ByteArray {
+        return decrypt(jwe, MockKmsDecryptionProvider(privateKey))
     }
 
     private fun base64UrlDecode(data: String): ByteArray {

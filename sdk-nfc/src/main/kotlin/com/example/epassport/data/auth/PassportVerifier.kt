@@ -22,10 +22,8 @@ import java.security.Security
  */
 class PassportVerifier {
 
-    init {
-        if (Security.getProvider("BC") == null) {
-            Security.addProvider(BouncyCastleProvider())
-        }
+    private val bcProvider = BouncyCastleProvider().also {
+        if (Security.getProvider(it.name) == null) Security.addProvider(it)
     }
 
     /**

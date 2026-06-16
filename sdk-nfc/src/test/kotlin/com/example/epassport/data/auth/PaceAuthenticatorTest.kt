@@ -98,7 +98,7 @@ class PaceAuthenticatorTest {
         val wrapped = invoke<ByteArray>("wrapDynamicAuthData", 0x80, data)
         val extracted = invoke<ByteArray>("extractDynamicAuthenticationData", wrapped + byteArrayOf(0x90.toByte(), 0x00.toByte()))
         assertNotNull(extracted)
-        assertTrue(data.contentEquals(extracted!!))
+        assertTrue(data.contentEquals(extracted))
     }
 
     private fun encodeLength(length: Int): ByteArray {

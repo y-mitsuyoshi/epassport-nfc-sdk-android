@@ -1,4 +1,4 @@
-# sdk-ocr ProGuard rules for release builds
+# app ProGuard rules for release builds
 
 # リリースビルドでデバッグログ (Log.d / Log.v) を自動削除する
 -assumenosideeffects class android.util.Log {

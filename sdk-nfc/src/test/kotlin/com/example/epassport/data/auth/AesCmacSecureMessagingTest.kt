@@ -84,7 +84,7 @@ class AesCmacSecureMessagingTest {
     }
 
     private fun calculateCmac(key: ByteArray, data: ByteArray): ByteArray {
-        val mac = org.bouncycastle.crypto.macs.CMac(org.bouncycastle.crypto.engines.AESEngine())
+        val mac = org.bouncycastle.crypto.macs.CMac(org.bouncycastle.crypto.engines.AESEngine.newInstance())
         mac.init(org.bouncycastle.crypto.params.KeyParameter(key))
         mac.update(data, 0, data.size)
         val result = ByteArray(16)

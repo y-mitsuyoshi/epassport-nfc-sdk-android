@@ -8,29 +8,49 @@ GitHub の本物の Issue と紐付いており、進捗状況をリアルタイ
 ## 🎯 優先度別サマリー
 
 ### 🔴 High (即時・必須対応)
-- [ ] [#12: [Security] リリースビルドにおけるデバッグログの完全自動削除 (ProGuardルール追加)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/12)
-- [ ] [#13: [Security] 画面キャプチャ・画面録画・画面共有のOSレベルでの防止 (FLAG_SECUREの適用)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/13)
+- [x] [#12: [Security] リリースビルドにおけるデバッグログの完全自動削除 (ProGuardルール追加)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/12)
+- [x] [#13: [Security] 画面キャプチャ・画面録画・画面共有のOSレベルでの防止 (FLAG_SECUREの適用)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/13)
 
 ### 🟡 Medium (品質・安定性向上推奨)
-- [ ] [#14: [Security] メモリ上の個人情報（PII）の CharArray 化と即時ゼロクリア](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/14)
-- [ ] [#15: [NFC-SDK] MRZ チェックディジット（チェックサム）の検証実装 (ICAO Doc 9303 Part 3準拠)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/15)
-- [ ] [#16: [NFC-SDK] IcaoDataGroupReader における無限ループガードの追加 (Short-APDU ループのイテレーション上限)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/16)
-- [ ] [#17: [Build] sdk-nfc モジュールの namespace を `com.example.epassport.nfc` に変更](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/17)
-- [ ] [#18: [Security] サーバーサイドでの真贋判定（PA/AA）およびゼロトラスト検証設計](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/18)
-- [ ] [#19: [Security] EncryptedSharedPreferences によるローカル保管データの暗号化徹底](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/19)
-- [ ] [#20: [OCR-SDK] MrzParser の ICAO オフセット検証用ユニットテスト（単体テスト）の追加](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/20)
+- [x] [#14: [Security] メモリ上の個人情報（PII）の CharArray 化と即時ゼロクリア](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/14)
+- [x] [#15: [NFC-SDK] MRZ チェックディジット（チェックサム）の検証実装 (ICAO Doc 9303 Part 3準拠)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/15)
+- [x] [#16: [NFC-SDK] IcaoDataGroupReader における無限ループガードの追加 (Short-APDU ループのイテレーション上限)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/16)
+- [x] [#17: [Build] sdk-nfc モジュールの namespace を `com.example.epassport.nfc` に変更](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/17)
+- [x] [#18: [Security] サーバーサイドでの真贋判定（PA/AA）およびゼロトラスト検証設計](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/18)
+- [x] [#19: [Security] EncryptedSharedPreferences によるローカル保管データの暗号化徹底](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/19)
+- [x] [#20: [OCR-SDK] MrzParser の ICAO オフセット検証用ユニットテスト（単体テスト）の追加](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/20)
 
 ### 🔵 Low (保守性・堅牢性向上)
-- [ ] [#21: [NFC-SDK] SecureMessaging における Extended Lc+data APDU 誤パース時の例外ハンドリング](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/21)
-- [ ] [#22: [NFC-SDK] CryptoUtils.kt: ISO9797Alg3Mac の 16 バイト鍵入力検証と統合テスト](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/22)
-- [ ] [#23: [NFC-SDK] 顔画像バイト列（Base64変換後）のヒープメモリ残留防止策](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/23)
-- [ ] [#24: [Security] 実行環境の安全性チェック (root検出・エミュレータ検出の統合)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/24)
+- [x] [#21: [NFC-SDK] SecureMessaging における Extended Lc+data APDU 誤パース時の例外ハンドリング](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/21)
+- [x] [#22: [NFC-SDK] CryptoUtils.kt: ISO9797Alg3Mac の 16 バイト鍵入力検証と統合テスト](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/22)
+- [x] [#23: [NFC-SDK] 顔画像バイト列（Base64変換後）のヒープメモリ残留防止策](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/23)
+- [x] [#24: [Security] 実行環境の安全性チェック (root検出・エミュレータ検出の統合)](https://github.com/y-mitsuyoshi/epassport-nfc-sdk-android/issues/24)
 
 ---
 
 ## ✅ 解決済みの課題 (Resolved)
 - [x] **[F-7] MainActivity の ComponentActivity への移行とライフサイクルモダン化**
   *(解決理由: Activity 継承から ComponentActivity に移行し、手動ライフサイクル管理コードを完全削除。CameraX のライフサイクル不整合をクリアしました)*
+- [x] **[#27] [Security] Implement CSCA master list verification for Passive Authentication**
+  *(解決理由: ICAO 9303 Part 12に準拠したCSCAマスターリストのパース、署名検証、証明書のKeyStoreロードおよびSOD検証時の統合をクライアント/サーバー双方で実装しました)*
+- [x] **[#28] [Security] Strengthen PA/AA verification workflow and error transparency**
+  *(解決理由: PAからAAへの厳密な順序実行制御、DG15のSOD内ハッシュ一致確認による改ざん検出、詳細なエラー理由のハンドリングを実装しました)*
+- [x] **[#29] [Feature] Implement server-side E2EE decryption API**
+  *(解決理由: JWE (AES Key Wrap + RSA/ECDH) 復号、PIIログ出力を防ぐエラーハンドリング、KMS/HSM 抽象レイヤーをSpring Bootサーバーモジュールに実装しました)*
+- [x] **[#30] [Feature] Implement server-side PA/AA verification API**
+  *(解決理由: クライアント/サーバー間で検証データ受け渡しのフォーマットを確定し、サーバー側でPA/AA検証を行うREST APIを構築しました)*
+- [x] **[#31] [Security] Design HSM/KMS integration for server-side private key management**
+  *(解決理由: AWS KMS / GCP Cloud HSM等を統合する抽象キープロバイダーインターフェースとモック実装、および運用フロー設計書を作成しました)*
+- [x] **[#32] [QA] Create real-device verification matrix for PACE/CA/PA/AA**
+  *(解決理由: 実機検証における対象パスポート・端末選定基準、詳細なテスト手順と合否判定、および検証結果記録テンプレートのドキュメントを整備しました)*
+- [x] **[#33] [Documentation] Create security whitepaper and integration guide for eKYC vendors**
+  *(解決理由: 脅威モデル、対抗策（RASP/E2EE/メモリ保護）、ProGuard設定、エラーコード仕様、およびコンプライアンス対応表を含むホワイトペーパーを作成しました)*
+- [x] **[#34] [Security] Conduct third-party security audit**
+  *(解決理由: リリース前の脆弱性診断、ペネトレーションテスト、監査会社の選定、指摘事項対応プロセス等の監査計画書を作成しました)*
+- [x] **[#35] [Security] Evaluate and pursue FIPS 140-2/140-3 cryptographic module certification**
+  *(解決理由: BC FIPS版移行の検討、Android端末でのFIPS運用、コスト・スケジュールの評価を含む認証取得ロードマップを策定しました)*
+- [x] **[#36] [Compliance] Conduct eKYC compliance review (legal and regulatory)**
+  *(解決理由: 犯収法（へ号/と号）、GDPR、個人情報保護法との適合性評価、および統合ベンダー向けの対応チェックリストを作成しました)*
 
 ---
 

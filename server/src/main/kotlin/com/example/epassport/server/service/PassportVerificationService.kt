@@ -9,11 +9,20 @@ import java.security.MessageDigest
 @Service
 class PassportVerificationService {
 
+    enum class FailureReason {
+        SOD_SIGNATURE_INVALID,
+        DG_HASH_MISMATCH,
+        AA_DG15_MISSING,
+        AA_PUBLIC_KEY_MISMATCH,
+        AA_SIGNATURE_INVALID,
+        INVALID_FORMAT
+    }
+
     data class VerificationResult(
         val successful: Boolean,
         val paSuccess: Boolean,
         val aaSuccess: Boolean?,
-        val failureReason: String?
+        val failureReason: FailureReason?
     )
 
     data class VerificationRequest(
@@ -37,7 +46,7 @@ class PassportVerificationService {
             trustStore.loadMasterList(java.util.Base64.getDecoder().decode(request.cscaMasterListBase64))
             val signatureValid = trustStore.verifySodSignature(sodBytes)
             if (!signatureValid) {
-                return VerificationResult(false, false, null, "SOD signature verification failed")
+                return VerificationResult(false, false, null, FailureReason.SOD_SIGNATURE_INVALID)
             }
             SodParser.verifyHashes(sodBytes, dataGroups)
         } else {
@@ -45,16 +54,16 @@ class PassportVerificationService {
         }
 
         if (!paSuccess) {
-            return VerificationResult(false, false, null, "DG hash mismatch")
+            return VerificationResult(false, false, null, FailureReason.DG_HASH_MISMATCH)
         }
 
         // Active Authentication: optional.
         val aaSuccess = if (request.aaPublicKeyBase64 != null && request.aaChallengeBase64 != null && request.aaSignatureBase64 != null) {
             val dg15Bytes = dataGroups[15]
-                ?: return VerificationResult(false, true, null, "AA requested but DG15 not provided")
+                ?: return VerificationResult(false, true, null, FailureReason.AA_DG15_MISSING)
             val aaPublicKey = java.util.Base64.getDecoder().decode(request.aaPublicKeyBase64)
             if (!MessageDigest.isEqual(dg15Bytes, aaPublicKey)) {
-                return VerificationResult(false, true, null, "AA public key does not match DG15")
+                return VerificationResult(false, true, null, FailureReason.AA_PUBLIC_KEY_MISMATCH)
             }
             val aaData = AAVerifier.ActiveAuthenticationData(
                 publicKeyInfo = aaPublicKey,
@@ -65,7 +74,7 @@ class PassportVerificationService {
         } else null
 
         if (aaSuccess == false) {
-            return VerificationResult(false, true, false, "Active Authentication signature invalid")
+            return VerificationResult(false, true, false, FailureReason.AA_SIGNATURE_INVALID)
         }
 
         return VerificationResult(true, true, aaSuccess, null)

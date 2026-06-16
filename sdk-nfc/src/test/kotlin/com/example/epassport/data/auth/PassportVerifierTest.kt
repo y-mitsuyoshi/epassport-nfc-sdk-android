@@ -161,8 +161,8 @@ class PassportVerifierTest {
         keyUsage: KeyUsage,
         isCa: Boolean
     ): X509Certificate {
-        val notBefore = Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000)
-        val notAfter = Date(System.currentTimeMillis() + 365 * 24 * 60 * 60 * 1000)
+        val notBefore = Date(System.currentTimeMillis() - 24L * 60 * 60 * 1000)
+        val notAfter = Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)
         val serial = BigInteger.valueOf(System.currentTimeMillis())
 
         val builder = X509v3CertificateBuilder(

@@ -157,4 +157,25 @@ class CryptoUtilsTest {
 
         assertArrayEquals(data, unpadded)
     }
+
+    @Test
+    fun calculateMac_invalidKeySize_throwsIllegalArgumentException() {
+        val data = ByteArray(16) { 0x55.toByte() }
+        
+        // 8 bytes key
+        try {
+            CryptoUtils.calculateMac(ByteArray(8), data)
+            org.junit.Assert.fail("Expected IllegalArgumentException for 8-byte key")
+        } catch (e: IllegalArgumentException) {
+            // expected
+        }
+
+        // 15 bytes key
+        try {
+            CryptoUtils.calculateMac(ByteArray(15), data)
+            org.junit.Assert.fail("Expected IllegalArgumentException for 15-byte key")
+        } catch (e: IllegalArgumentException) {
+            // expected
+        }
+    }
 }

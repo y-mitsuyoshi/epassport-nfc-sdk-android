@@ -12,9 +12,9 @@ class MrzParserTest {
         val mrz = "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\n" +
                   "L898902C36UTO7408122F1204159ZE184226B<<<<<14"
         val result = MrzParser.parse(mrz)
-        assertEquals("L898902C3", result.documentNumber)
-        assertEquals("740812", result.dateOfBirth)
-        assertEquals("120415", result.dateOfExpiry)
+        assertEquals("L898902C3", String(result.documentNumber))
+        assertEquals("740812", String(result.dateOfBirth))
+        assertEquals("120415", String(result.dateOfExpiry))
     }
 
     @Test
@@ -22,7 +22,7 @@ class MrzParserTest {
         val mrz = "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\n" +
                   "L898902<<6UTO7408122F1204159ZE184226B<<<<<14"
         val result = MrzParser.parse(mrz)
-        assertEquals("L898902", result.documentNumber)
+        assertEquals("L898902", String(result.documentNumber))
     }
 
     // ========== TD2 (2行×36文字) ==========
@@ -32,9 +32,9 @@ class MrzParserTest {
         val line1 = "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<"
         val line2 = "L898902C36UTO7408122F1204159ZE18422B"
         val result = MrzParser.parse("$line1\n$line2")
-        assertEquals("L898902C3", result.documentNumber)
-        assertEquals("740812", result.dateOfBirth)
-        assertEquals("120415", result.dateOfExpiry)
+        assertEquals("L898902C3", String(result.documentNumber))
+        assertEquals("740812", String(result.dateOfBirth))
+        assertEquals("120415", String(result.dateOfExpiry))
     }
 
     @Test
@@ -42,7 +42,7 @@ class MrzParserTest {
         val line1 = "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<"
         val line2 = "L898902<<6UTO7408122F1204159ZE18422B"
         val result = MrzParser.parse("$line1\n$line2")
-        assertEquals("L898902", result.documentNumber)
+        assertEquals("L898902", String(result.documentNumber))
     }
 
     // ========== TD1 (3行×30文字) ==========
@@ -54,9 +54,9 @@ class MrzParserTest {
         val line2 = "<<<<<<9408125M1204158UTO<<<1<<"
         val line3 = "MUSTERMANN<<ERIKA<<<<<<<<<<<<<"
         val result = MrzParser.parse("$line1\n$line2\n$line3")
-        assertEquals("D23145890", result.documentNumber)
-        assertEquals("940812", result.dateOfBirth)
-        assertEquals("120415", result.dateOfExpiry)
+        assertEquals("D23145890", String(result.documentNumber))
+        assertEquals("940812", String(result.dateOfBirth))
+        assertEquals("120415", String(result.dateOfExpiry))
     }
 
     @Test
@@ -65,9 +65,9 @@ class MrzParserTest {
         val line2 = "<<<<<<9408125M1204158UTO<<<1<<"
         val line3 = "MUSTERMANN<<ERIKA<<<<<<<<<<<<<"
         val result = MrzParser.parse("$line1\n$line2\n$line3")
-        assertEquals("D23145890", result.documentNumber)
-        assertEquals("940812", result.dateOfBirth)
-        assertEquals("120415", result.dateOfExpiry)
+        assertEquals("D23145890", String(result.documentNumber))
+        assertEquals("940812", String(result.dateOfBirth))
+        assertEquals("120415", String(result.dateOfExpiry))
     }
 
     @Test
@@ -76,7 +76,7 @@ class MrzParserTest {
         val line2 = "<<<<<<9408125M1204158UTO<<<1<<"
         val line3 = "MUSTERMANN<<ERIKA<<<<<<<<<<<<<"
         val result = MrzParser.parse("$line1\n$line2\n$line3")
-        assertEquals("123456", result.documentNumber)
+        assertEquals("123456", String(result.documentNumber))
     }
 
     @Test(expected = IllegalArgumentException::class)

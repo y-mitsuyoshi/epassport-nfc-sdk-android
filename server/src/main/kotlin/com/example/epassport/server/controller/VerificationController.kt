@@ -33,6 +33,6 @@ class VerificationController(
         val successful: Boolean,
         val paSuccess: Boolean,
         val aaSuccess: Boolean?,
-        val failureReason: String?
+        val failureReason: PassportVerificationService.FailureReason?
     )
 }

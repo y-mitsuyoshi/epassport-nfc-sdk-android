@@ -99,7 +99,7 @@ class PassportVerificationServiceTest {
         val result = service.verify(request)
 
         assert(!result.successful)
-        assert(result.failureReason?.contains("hash") ?: false)
+        assert(result.failureReason == PassportVerificationService.FailureReason.DG_HASH_MISMATCH)
     }
 
     private fun generateRsaKeyPair(): KeyPair {
