@@ -8,21 +8,37 @@ import org.bouncycastle.cms.SignerInformation
 import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.Security
+import java.security.cert.CertificateFactory
+import java.security.cert.CertPathValidator
+import java.security.cert.PKIXBuilderParameters
+import java.security.cert.X509CertSelector
 import java.security.cert.X509Certificate
 
 /**
  * サーバー側用 CSCA 信頼ストア。
- *
- * クライアント SDK の [com.example.epassport.data.auth.CscaTrustStore] と同等の処理を行う。
  */
 class CscaTrustStore {
+
+    init {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(BouncyCastleProvider())
+        }
+    }
 
     private val keyStore: KeyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
         load(null, null)
     }
 
     private val certificateConverter = JcaX509CertificateConverter()
-        .setProvider(BouncyCastleProvider())
+        .setProvider(BouncyCastleProvider.PROVIDER_NAME)
+
+    /**
+     * 信頼できるマスターリスト署名者証明書の SHA-256 フィンガープリント（大文字16進数、コロンなし）。
+     * 空の場合はフィンガープリント検証をスキップする。
+     */
+    var trustedMasterListSignerFingerprints: Set<String> = emptySet()
 
     fun loadMasterList(masterListBytes: ByteArray) {
         try {
@@ -60,10 +76,58 @@ class CscaTrustStore {
         return try {
             val cmsSignedData = CMSSignedData(sodBytes)
             val signer = cmsSignedData.signerInfos.signers.firstOrNull() ?: return false
-            val signerCert = findSignerCertificate(signer, getCertificates()) ?: return false
+
+            // SODに添付された証明書群から、署名者の証明書（DS証明書）を取得する
+            val certificatesStore = cmsSignedData.certificates
+            val signerCertHolder = certificatesStore?.getMatches(null)
+                ?.map { it as X509CertificateHolder }
+                ?.firstOrNull { signer.sid.match(it) }
+            
+            val dsCert = if (signerCertHolder != null) {
+                certificateConverter.getCertificate(signerCertHolder)
+            } else {
+                // バンドルされていない場合は信頼ストアから直接検索（フォールバック）
+                findSignerCertificate(signer, getCertificates())
+            } ?: return false
+
+            // 1. 有効期限検証
+            dsCert.checkValidity()
+
+            // 2. Key Usage 検証 (digitalSignature = index 0)
+            if (dsCert.keyUsage != null && !dsCert.keyUsage[0]) {
+                return false
+            }
+
+            // 3. 証明書チェーン（DS -> CSCA）検証
+            val cscaCerts = getCertificates()
+            if (cscaCerts.isEmpty()) return false
+
+            // DS証明書自体が信頼ストアに直接含まれているか（テスト用・自己署名ケースなど）
+            val isDirectlyTrusted = cscaCerts.any { trusted ->
+                trusted.subjectX500Principal == dsCert.subjectX500Principal &&
+                        trusted.publicKey == dsCert.publicKey
+            }
+
+            if (!isDirectlyTrusted) {
+                val selector = X509CertSelector().apply {
+                    certificate = dsCert
+                }
+                val pkixParams = PKIXBuilderParameters(keyStore, selector).apply {
+                    isRevocationEnabled = false // オフライン検証のためデフォルトはオフ
+                }
+
+                val certFactory = CertificateFactory.getInstance("X.509", BouncyCastleProvider.PROVIDER_NAME)
+                val certPath = certFactory.generateCertPath(listOf(dsCert))
+                
+                val validator = CertPathValidator.getInstance("PKIX", BouncyCastleProvider.PROVIDER_NAME)
+                validator.validate(certPath, pkixParams)
+            }
+
+            // 4. 数学的署名検証（DS証明書の公開鍵を用いる）
             val verifier = JcaSimpleSignerInfoVerifierBuilder()
-                .setProvider(BouncyCastleProvider())
-                .build(signerCert)
+                .setProvider(BouncyCastleProvider.PROVIDER_NAME)
+                .build(dsCert)
+
             signer.verify(verifier)
         } catch (e: Exception) {
             false
@@ -120,17 +184,29 @@ class CscaTrustStore {
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
     private fun verifyMasterListSignature(
         cmsSignedData: CMSSignedData,
         signer: SignerInformation,
         signerCert: X509Certificate
     ): Boolean {
         return try {
+            // 1. 数学的署名検証
             val verifier = JcaSimpleSignerInfoVerifierBuilder()
-                .setProvider(BouncyCastleProvider())
+                .setProvider(BouncyCastleProvider.PROVIDER_NAME)
                 .build(signerCert)
-            signer.verify(verifier)
+            val isSigValid = signer.verify(verifier)
+            if (!isSigValid) return false
+
+            // 2. 署名者の指紋検証（ピン留めリストがある場合のみ）
+            if (trustedMasterListSignerFingerprints.isNotEmpty()) {
+                val digest = MessageDigest.getInstance("SHA-256")
+                val hash = digest.digest(signerCert.encoded)
+                val fingerprint = hash.joinToString("") { "%02X".format(it) }
+                if (!trustedMasterListSignerFingerprints.contains(fingerprint)) {
+                    return false
+                }
+            }
+            true
         } catch (e: Exception) {
             false
         }

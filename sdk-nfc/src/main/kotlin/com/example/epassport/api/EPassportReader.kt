@@ -40,9 +40,10 @@ object EPassportReader {
         mrzData: MrzData,
         challenge: ByteArray? = null,
         trustStore: CscaTrustStore? = null,
+        allowDebug: Boolean = false,
         onProgress: ((ReadProgress) -> Unit)? = null
     ): ReadResult = withContext(Dispatchers.IO) {
-        val securityChecker = RuntimeSecurityChecker(context)
+        val securityChecker = RuntimeSecurityChecker(context, allowDebug = allowDebug)
         if (!securityChecker.isDeviceSecure()) {
             return@withContext ReadResult.Error(
                 EPassportException(

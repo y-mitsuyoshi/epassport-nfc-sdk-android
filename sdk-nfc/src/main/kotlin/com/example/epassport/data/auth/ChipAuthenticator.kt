@@ -122,17 +122,29 @@ class ChipAuthenticator {
     }
 
     private fun inferCurveName(spki: SubjectPublicKeyInfo): String {
-        // Try to extract algorithm parameters; fallback to common curve
         return try {
             val params = spki.algorithm.parameters
-            when {
-                params.toString().contains("256") -> "secp256r1"
-                params.toString().contains("384") -> "secp384r1"
-                params.toString().contains("521") -> "secp521r1"
+            val oid = org.bouncycastle.asn1.ASN1ObjectIdentifier.getInstance(params)
+            when (oid.id) {
+                "1.2.840.10045.3.1.7" -> "secp256r1"
+                "1.3.132.0.34" -> "secp384r1"
+                "1.3.132.0.35" -> "secp521r1"
+                "1.3.36.3.3.2.8.1.1.7" -> "brainpoolP256r1"
                 else -> "secp256r1"
             }
         } catch (e: Exception) {
-            "secp256r1"
+            // Safe fallback to string matching if ASN.1 casting fails
+            try {
+                val paramsStr = spki.algorithm.parameters?.toString() ?: ""
+                when {
+                    paramsStr.contains("256") -> "secp256r1"
+                    paramsStr.contains("384") -> "secp384r1"
+                    paramsStr.contains("521") -> "secp521r1"
+                    else -> "secp256r1"
+                }
+            } catch (ex: Exception) {
+                "secp256r1"
+            }
         }
     }
 

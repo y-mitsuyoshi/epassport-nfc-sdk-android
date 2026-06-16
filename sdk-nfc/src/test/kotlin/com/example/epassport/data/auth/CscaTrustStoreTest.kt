@@ -42,6 +42,8 @@ class CscaTrustStoreTest {
 
     private lateinit var cscaKeyPair: KeyPair
     private lateinit var cscaCert: X509Certificate
+    private lateinit var dsKeyPair: KeyPair
+    private lateinit var dsCert: X509Certificate
 
     @Before
     fun setUp() {
@@ -51,6 +53,14 @@ class CscaTrustStoreTest {
             keyPair = cscaKeyPair,
             keyUsage = KeyUsage(KeyUsage.keyCertSign or KeyUsage.cRLSign),
             isCa = true
+        )
+        dsKeyPair = generateRsaKeyPair()
+        dsCert = createIssuedCert(
+            subject = X500Name("C=JP, O=Government, CN=DS Japan 001"),
+            publicKey = dsKeyPair.public,
+            issuerCert = cscaCert,
+            issuerKey = cscaKeyPair.private,
+            keyUsage = KeyUsage(KeyUsage.digitalSignature)
         )
     }
 
@@ -74,7 +84,6 @@ class CscaTrustStoreTest {
             keyUsage = KeyUsage(KeyUsage.keyCertSign),
             isCa = true
         )
-        // Master list signed by a different key than the one we trust.
         val masterList = createSelfSignedMasterList(listOf(cscaCert), otherKeyPair, otherCert)
 
         CscaTrustStore().loadMasterList(masterList)
@@ -85,7 +94,8 @@ class CscaTrustStoreTest {
         val masterList = createSelfSignedMasterList(listOf(cscaCert), cscaKeyPair, cscaCert)
         val trustStore = CscaTrustStore().apply { loadMasterList(masterList) }
 
-        val sod = createSignedSod(cscaKeyPair.private, cscaCert)
+        // Sign SOD with DS key, bundling the DS certificate
+        val sod = createSignedSod(dsKeyPair.private, dsCert)
 
         assertTrue(trustStore.verifySodSignature(sod))
     }
@@ -112,8 +122,8 @@ class CscaTrustStoreTest {
         val masterList = createSelfSignedMasterList(listOf(cscaCert), cscaKeyPair, cscaCert)
         val trustStore = CscaTrustStore().apply { loadMasterList(masterList) }
 
-        val sod = createSignedSod(cscaKeyPair.private, cscaCert)
-        val dataGroups = emptyMap<Int, ByteArray>() // SOD-only signature test
+        val sod = createSignedSod(dsKeyPair.private, dsCert)
+        val dataGroups = emptyMap<Int, ByteArray>()
 
         assertTrue(SodParser.verifyPassiveAuthentication(sod, dataGroups, trustStore))
     }
@@ -124,6 +134,41 @@ class CscaTrustStoreTest {
         trustStore.addCertificate(cscaCert)
 
         assertEquals(1, trustStore.getCertificates().size)
+    }
+
+    private fun createIssuedCert(
+        subject: X500Name,
+        publicKey: java.security.PublicKey,
+        issuerCert: X509Certificate,
+        issuerKey: java.security.PrivateKey,
+        keyUsage: KeyUsage
+    ): X509Certificate {
+        val notBefore = Date(System.currentTimeMillis() - 24L * 60 * 60 * 1000)
+        val notAfter = Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)
+        val serial = BigInteger.valueOf(System.currentTimeMillis() + 1)
+
+        val builder = X509v3CertificateBuilder(
+            X500Name.getInstance(issuerCert.subjectX500Principal.encoded),
+            serial,
+            notBefore,
+            notAfter,
+            subject,
+            SubjectPublicKeyInfo.getInstance(publicKey.encoded)
+        )
+        builder.addExtension(Extension.keyUsage, true, keyUsage)
+        builder.addExtension(
+            Extension.subjectKeyIdentifier,
+            false,
+            JcaX509ExtensionUtils().createSubjectKeyIdentifier(publicKey)
+        )
+        builder.addExtension(
+            Extension.authorityKeyIdentifier,
+            false,
+            JcaX509ExtensionUtils().createAuthorityKeyIdentifier(issuerCert)
+        )
+
+        val signer = JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(issuerKey)
+        return JcaX509CertificateConverter().setProvider("BC").getCertificate(builder.build(signer))
     }
 
     private fun generateRsaKeyPair(): KeyPair {

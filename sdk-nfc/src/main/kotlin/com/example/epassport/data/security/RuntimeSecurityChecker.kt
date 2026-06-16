@@ -12,7 +12,8 @@ import com.scottyab.rootbeer.RootBeer
  */
 class RuntimeSecurityChecker(
     private val context: Context,
-    private val rootBeer: RootBeer = RootBeer(context.applicationContext)
+    private val rootBeer: RootBeer = RootBeer(context.applicationContext),
+    private val allowDebug: Boolean = false
 ) {
 
     /**
@@ -22,7 +23,7 @@ class RuntimeSecurityChecker(
      *         false: 安全ではない環境が検出された
      */
     fun isDeviceSecure(): Boolean {
-        return !isRooted() && !isEmulator() && !isDebugBuild() && !isDebugged()
+        return !isRooted() && !isEmulator() && (allowDebug || !isDebugBuild()) && (allowDebug || !isDebugged())
     }
 
     /**
@@ -34,8 +35,8 @@ class RuntimeSecurityChecker(
         val threats = mutableListOf<String>()
         if (isRooted()) threats.add("rooted_device")
         if (isEmulator()) threats.add("emulator")
-        if (isDebugBuild()) threats.add("debug_build")
-        if (isDebugged()) threats.add("debugger_attached")
+        if (!allowDebug && isDebugBuild()) threats.add("debug_build")
+        if (!allowDebug && isDebugged()) threats.add("debugger_attached")
         return threats
     }
 

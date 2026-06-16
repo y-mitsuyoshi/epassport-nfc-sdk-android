@@ -63,15 +63,37 @@ object AAVerifier {
      */
     private fun verifySignature(publicKey: PublicKey, challenge: ByteArray, signature: ByteArray): Boolean {
         return try {
-            val algorithm = when (publicKey.algorithm.uppercase()) {
+            val keyType = publicKey.algorithm.uppercase()
+            val primaryAlg = when (keyType) {
+                "RSA" -> "SHA256withRSA"
+                "EC" -> "SHA256withECDSA"
+                else -> throw InvalidDataException("Unsupported AA public key algorithm: $keyType")
+            }
+            
+            // Try SHA-256 first
+            try {
+                val sig = Signature.getInstance(primaryAlg, "BC")
+                sig.initVerify(publicKey)
+                sig.update(challenge)
+                if (sig.verify(signature)) return true
+            } catch (e: Exception) {
+                // Fallback to SHA-1
+            }
+
+            val fallbackAlg = when (keyType) {
                 "RSA" -> "SHA1withRSA"
                 "EC" -> "SHA1withECDSA"
-                else -> throw InvalidDataException("Unsupported AA public key algorithm: ${publicKey.algorithm}")
+                else -> null
             }
-            val sig = Signature.getInstance(algorithm, "BC")
-            sig.initVerify(publicKey)
-            sig.update(challenge)
-            sig.verify(signature)
+
+            if (fallbackAlg != null) {
+                val sig = Signature.getInstance(fallbackAlg, "BC")
+                sig.initVerify(publicKey)
+                sig.update(challenge)
+                sig.verify(signature)
+            } else {
+                false
+            }
         } catch (e: Exception) {
             false
         }
