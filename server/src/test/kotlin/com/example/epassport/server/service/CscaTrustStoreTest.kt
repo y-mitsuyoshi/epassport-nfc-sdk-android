@@ -31,6 +31,8 @@ class CscaTrustStoreTest {
 
     private lateinit var cscaKeyPair: KeyPair
     private lateinit var cscaCert: X509Certificate
+    private lateinit var dsKeyPair: KeyPair
+    private lateinit var dsCert: X509Certificate
 
     @BeforeEach
     fun setUp() {
@@ -41,6 +43,14 @@ class CscaTrustStoreTest {
             keyPair = cscaKeyPair,
             keyUsage = KeyUsage(KeyUsage.keyCertSign or KeyUsage.cRLSign),
             isCa = true
+        )
+        dsKeyPair = generateRsaKeyPair()
+        dsCert = createIssuedCert(
+            subject = X500Name("C=JP, O=Government, CN=DS Japan"),
+            publicKey = dsKeyPair.public,
+            issuerCert = cscaCert,
+            issuerKey = cscaKeyPair.private,
+            keyUsage = KeyUsage(KeyUsage.digitalSignature)
         )
     }
 
@@ -75,7 +85,7 @@ class CscaTrustStoreTest {
         val masterList = createSelfSignedMasterList(listOf(cscaCert), cscaKeyPair, cscaCert)
         val trustStore = CscaTrustStore().apply { loadMasterList(masterList) }
 
-        val sod = createSignedSod(cscaKeyPair.private, cscaCert)
+        val sod = createSignedSod(dsKeyPair.private, dsCert)
 
         assertTrue(trustStore.verifySodSignature(sod))
     }
@@ -109,6 +119,41 @@ class CscaTrustStoreTest {
 
     private fun generateRsaKeyPair(): KeyPair {
         return KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+    }
+
+    private fun createIssuedCert(
+        subject: X500Name,
+        publicKey: java.security.PublicKey,
+        issuerCert: X509Certificate,
+        issuerKey: java.security.PrivateKey,
+        keyUsage: KeyUsage
+    ): X509Certificate {
+        val notBefore = Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000)
+        val notAfter = Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)
+        val serial = BigInteger.valueOf(System.currentTimeMillis() + 1)
+
+        val builder = X509v3CertificateBuilder(
+            X500Name.getInstance(issuerCert.subjectX500Principal.encoded),
+            serial,
+            notBefore,
+            notAfter,
+            subject,
+            SubjectPublicKeyInfo.getInstance(publicKey.encoded)
+        )
+        builder.addExtension(Extension.keyUsage, true, keyUsage)
+        builder.addExtension(
+            Extension.subjectKeyIdentifier,
+            false,
+            JcaX509ExtensionUtils().createSubjectKeyIdentifier(publicKey)
+        )
+        builder.addExtension(
+            Extension.authorityKeyIdentifier,
+            false,
+            JcaX509ExtensionUtils().createAuthorityKeyIdentifier(issuerCert)
+        )
+
+        val signer = JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(issuerKey)
+        return JcaX509CertificateConverter().setProvider("BC").getCertificate(builder.build(signer))
     }
 
     private fun createSelfSignedCert(

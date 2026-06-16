@@ -37,6 +37,8 @@ class PassportVerificationServiceTest {
     private lateinit var service: PassportVerificationService
     private lateinit var cscaKeyPair: KeyPair
     private lateinit var cscaCert: X509Certificate
+    private lateinit var dsKeyPair: KeyPair
+    private lateinit var dsCert: X509Certificate
     private lateinit var aaKeyPair: KeyPair
 
     @BeforeEach
@@ -50,6 +52,14 @@ class PassportVerificationServiceTest {
             KeyUsage(KeyUsage.keyCertSign or KeyUsage.cRLSign),
             true
         )
+        dsKeyPair = generateRsaKeyPair()
+        dsCert = createIssuedCert(
+            subject = X500Name("C=JP, O=Government, CN=DS Japan"),
+            publicKey = dsKeyPair.public,
+            issuerCert = cscaCert,
+            issuerKey = cscaKeyPair.private,
+            keyUsage = KeyUsage(KeyUsage.digitalSignature)
+        )
         aaKeyPair = generateRsaKeyPair()
     }
 
@@ -59,7 +69,7 @@ class PassportVerificationServiceTest {
         val dg2 = byteArrayOf(0x03, 0x04)
         val dg15 = aaKeyPair.public.encoded
         val dataGroups = mapOf(1 to dg1, 2 to dg2, 15 to dg15)
-        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        val sod = createSod(dataGroups, dsKeyPair.private, dsCert)
 
         val challenge = byteArrayOf(0x11, 0x22)
         val signature = signWithRsa(aaKeyPair, challenge)
@@ -84,7 +94,7 @@ class PassportVerificationServiceTest {
     fun verify_withTamperedDgHash_returnsFailure() {
         val dg1 = byteArrayOf(0x01, 0x02)
         val dataGroups = mapOf(1 to dg1)
-        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        val sod = createSod(dataGroups, dsKeyPair.private, dsCert)
 
         val tamperedGroups = mapOf(1 to byteArrayOf(0xFF.toByte()))
         val request = PassportVerificationService.VerificationRequest(
@@ -106,7 +116,7 @@ class PassportVerificationServiceTest {
     fun verify_withInvalidSodSignature_returnsFailure() {
         val dg1 = byteArrayOf(0x01, 0x02)
         val dataGroups = mapOf(1 to dg1)
-        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        val sod = createSod(dataGroups, dsKeyPair.private, dsCert)
         // Corrupt SOD bytes
         val corruptedSod = sod.copyOf()
         corruptedSod[corruptedSod.size - 1] = (corruptedSod[corruptedSod.size - 1] + 1).toByte()
@@ -131,7 +141,7 @@ class PassportVerificationServiceTest {
     fun verify_withMissingDg15_returnsFailure() {
         val dg1 = byteArrayOf(0x01, 0x02)
         val dataGroups = mapOf(1 to dg1)
-        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        val sod = createSod(dataGroups, dsKeyPair.private, dsCert)
 
         val request = PassportVerificationService.VerificationRequest(
             sodBase64 = Base64.getEncoder().encodeToString(sod),
@@ -154,7 +164,7 @@ class PassportVerificationServiceTest {
         val dg1 = byteArrayOf(0x01, 0x02)
         val dg15 = aaKeyPair.public.encoded
         val dataGroups = mapOf(1 to dg1, 15 to dg15)
-        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        val sod = createSod(dataGroups, dsKeyPair.private, dsCert)
 
         // Try to verify with a different public key
         val wrongKeyPair = generateRsaKeyPair()
@@ -179,7 +189,7 @@ class PassportVerificationServiceTest {
         val dg1 = byteArrayOf(0x01, 0x02)
         val dg15 = aaKeyPair.public.encoded
         val dataGroups = mapOf(1 to dg1, 15 to dg15)
-        val sod = createSod(dataGroups, cscaKeyPair.private, cscaCert)
+        val sod = createSod(dataGroups, dsKeyPair.private, dsCert)
 
         val challenge = byteArrayOf(0x11, 0x22)
         val invalidSignature = byteArrayOf(0x00, 0x01, 0x02)
@@ -203,6 +213,41 @@ class PassportVerificationServiceTest {
 
     private fun generateRsaKeyPair(): KeyPair {
         return KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+    }
+
+    private fun createIssuedCert(
+        subject: X500Name,
+        publicKey: java.security.PublicKey,
+        issuerCert: X509Certificate,
+        issuerKey: java.security.PrivateKey,
+        keyUsage: KeyUsage
+    ): X509Certificate {
+        val notBefore = Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000)
+        val notAfter = Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)
+        val serial = BigInteger.valueOf(System.currentTimeMillis() + 1)
+
+        val builder = X509v3CertificateBuilder(
+            X500Name.getInstance(issuerCert.subjectX500Principal.encoded),
+            serial,
+            notBefore,
+            notAfter,
+            subject,
+            SubjectPublicKeyInfo.getInstance(publicKey.encoded)
+        )
+        builder.addExtension(Extension.keyUsage, true, keyUsage)
+        builder.addExtension(
+            Extension.subjectKeyIdentifier,
+            false,
+            JcaX509ExtensionUtils().createSubjectKeyIdentifier(publicKey)
+        )
+        builder.addExtension(
+            Extension.authorityKeyIdentifier,
+            false,
+            JcaX509ExtensionUtils().createAuthorityKeyIdentifier(issuerCert)
+        )
+
+        val signer = JcaContentSignerBuilder("SHA256withRSA").setProvider("BC").build(issuerKey)
+        return JcaX509CertificateConverter().setProvider("BC").getCertificate(builder.build(signer))
     }
 
     private fun createSelfSignedCert(
